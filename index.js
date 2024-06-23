@@ -18,13 +18,27 @@ app.get('/screenshot', async (req, res) => {
         return res.status(400).send('URL is required');
     }
 
-    const cacheFile = path.join(cacheDir, `${encodeURIComponent(url)}.png`);
+    const encodedUrl = encodeURIComponent(url);
+    const cacheFile = path.join(cacheDir, `${encodedUrl}.png`);
+
+    // Check if the screenshot is cached
+    if (fs.existsSync(cacheFile)) {
+        return res.json({
+            url,
+            ssl: url.startsWith('https://'),
+            loadTime: null,  // This value should be fetched from cache if necessary
+            seo: {
+                title: null,  // This value should be fetched from cache if necessary
+                description: null,  // This value should be fetched from cache if necessary
+                h1: null  // This value should be fetched from cache if necessary
+            },
+            screenshotPath: `/cache/${encodedUrl}.png`,
+            cached: true
+        });
+    }
 
     try {
-        // Start timing the page load
         const start = Date.now();
-
-        // Launch Puppeteer
         const browser = await puppeteer.launch({
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
             ignoreHTTPSErrors: true
@@ -60,7 +74,7 @@ app.get('/screenshot', async (req, res) => {
                 description,
                 h1
             },
-            screenshotPath: `/cache/${encodeURIComponent(url)}.png`,
+            screenshotPath: `/cache/${encodedUrl}.png`,
             cached: false
         });
     } catch (error) {
@@ -69,6 +83,7 @@ app.get('/screenshot', async (req, res) => {
     }
 });
 
+// Serve cached screenshots
 app.use('/cache', express.static(cacheDir));
 
 app.listen(port, () => {
