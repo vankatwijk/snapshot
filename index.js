@@ -13,7 +13,7 @@ if (!fs.existsSync(cacheDir)) {
 }
 
 app.get('/screenshot', async (req, res) => {
-    const { url, device = 'desktop' } = req.query;  // Add device query parameter
+    const { url, device = 'desktop', refresh = 'false' } = req.query;  // Add device and refresh query parameters
 
     if (!url) {
         return res.status(400).send('URL is required');
@@ -22,8 +22,8 @@ app.get('/screenshot', async (req, res) => {
     const hash = crypto.createHash('md5').update(url).digest('hex');
     const cacheFile = path.join(cacheDir, `${hash}.png`);
 
-    // Check if the screenshot is cached
-    if (fs.existsSync(cacheFile)) {
+    // Check if the screenshot is cached and refresh is not requested
+    if (fs.existsSync(cacheFile) && refresh !== 'true') {
         return res.json({
             url,
             ssl: url.startsWith('https://'),
