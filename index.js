@@ -83,6 +83,7 @@ app.get('/screenshot', async (req, res) => {
     }
 });
 
+// Serve cached screenshots
 app.use('/cache', express.static(cacheDir));
 
 app.listen(port, () => {
