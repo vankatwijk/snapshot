@@ -20,17 +20,11 @@ app.get('/screenshot', async (req, res) => {
 
     const cacheFile = path.join(cacheDir, `${encodeURIComponent(url)}.png`);
 
-    // Check if the screenshot is cached
-    if (fs.existsSync(cacheFile)) {
-        return res.json({
-            url,
-            screenshotPath: `/cache/${encodeURIComponent(url)}.png`,
-            cached: true
-        });
-    }
-
     try {
+        // Start timing the page load
         const start = Date.now();
+
+        // Launch Puppeteer
         const browser = await puppeteer.launch({
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
             ignoreHTTPSErrors: true
