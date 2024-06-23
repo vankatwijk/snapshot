@@ -2,6 +2,7 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const app = express();
 const port = 3000;
 const cacheDir = path.join(__dirname, 'cache');
@@ -18,8 +19,8 @@ app.get('/screenshot', async (req, res) => {
         return res.status(400).send('URL is required');
     }
 
-    const encodedUrl = encodeURIComponent(url);
-    const cacheFile = path.join(cacheDir, `${encodedUrl}.png`);
+    const hash = crypto.createHash('md5').update(url).digest('hex');
+    const cacheFile = path.join(cacheDir, `${hash}.png`);
 
     // Check if the screenshot is cached
     if (fs.existsSync(cacheFile)) {
@@ -32,7 +33,7 @@ app.get('/screenshot', async (req, res) => {
                 description: null,  // This value should be fetched from cache if necessary
                 h1: null  // This value should be fetched from cache if necessary
             },
-            screenshotPath: `/cache/${encodedUrl}.png`,
+            screenshotPath: `/cache/${hash}.png`,
             cached: true
         });
     }
@@ -74,7 +75,7 @@ app.get('/screenshot', async (req, res) => {
                 description,
                 h1
             },
-            screenshotPath: `/cache/${encodedUrl}.png`,
+            screenshotPath: `/cache/${hash}.png`,
             cached: false
         });
     } catch (error) {
