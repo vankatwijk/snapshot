@@ -2,7 +2,6 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
 const app = express();
 const port = 3000;
 const cacheDir = path.join(__dirname, 'cache');
@@ -23,10 +22,9 @@ app.get('/screenshot', async (req, res) => {
 
     // Check if the screenshot is cached
     if (fs.existsSync(cacheFile)) {
-        const cachedImage = fs.readFileSync(cacheFile);
         return res.json({
             url,
-            screenshot: cachedImage.toString('base64'),
+            screenshotPath: `/cache/${encodeURIComponent(url)}.png`,
             cached: true
         });
     }
@@ -68,7 +66,7 @@ app.get('/screenshot', async (req, res) => {
                 description,
                 h1
             },
-            screenshot: screenshot.toString('base64'),
+            screenshotPath: `/cache/${encodeURIComponent(url)}.png`,
             cached: false
         });
     } catch (error) {
@@ -76,6 +74,8 @@ app.get('/screenshot', async (req, res) => {
         res.status(500).send(`Error taking screenshot: ${error.message}`);
     }
 });
+
+app.use('/cache', express.static(cacheDir));
 
 app.listen(port, () => {
     console.log(`Screenshot service running at http://localhost:${port}`);
