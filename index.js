@@ -3,17 +3,21 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const cors = require('cors'); // Import cors
+
 const app = express();
 const port = 3000;
 const cacheDir = path.join(__dirname, 'cache');
 
-// Ensure the cache directory exists
+// Enable CORS
+app.use(cors());
+
 if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir);
 }
 
 app.get('/screenshot', async (req, res) => {
-    const { url, device = 'desktop', refresh = 'false' } = req.query;  // Add device and refresh query parameters
+    const { url, device = 'desktop', refresh = false } = req.query;
 
     if (!url) {
         return res.status(400).send('URL is required');
@@ -22,16 +26,15 @@ app.get('/screenshot', async (req, res) => {
     const hash = crypto.createHash('md5').update(url).digest('hex');
     const cacheFile = path.join(cacheDir, `${hash}.png`);
 
-    // Check if the screenshot is cached and refresh is not requested
-    if (fs.existsSync(cacheFile) && refresh !== 'true') {
+    if (fs.existsSync(cacheFile) && !refresh) {
         return res.json({
             url,
             ssl: url.startsWith('https://'),
-            loadTime: null,  // This value should be fetched from cache if necessary
+            loadTime: null,
             seo: {
-                title: null,  // This value should be fetched from cache if necessary
-                description: null,  // This value should be fetched from cache if necessary
-                h1: null  // This value should be fetched from cache if necessary
+                title: null,
+                description: null,
+                h1: null
             },
             screenshotPath: `/cache/${hash}.png`,
             cached: true
@@ -46,37 +49,28 @@ app.get('/screenshot', async (req, res) => {
         });
         const page = await browser.newPage();
 
-        // Check SSL
         const ssl = url.startsWith('https://');
 
-        // Set device emulation
         if (device === 'mobile') {
             await page.emulate(puppeteer.devices['iPhone 6']);
         } else {
             await page.setViewport({ width: 1280, height: 800 });
         }
 
-        // Navigate to the page with a maximum load time of 20 seconds
         await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
         const loadTime = Date.now() - start;
 
-        // Get SEO information
         const title = await page.title();
         const description = await page.$eval('meta[name="description"]', element => element.content).catch(() => '');
         const h1 = await page.$eval('h1', element => element.innerText).catch(() => '');
 
-        console.log(`Title: ${title}`);
-        console.log(`Description: ${description}`);
-        console.log(`H1: ${h1}`);
-
-        // Take screenshot with default size
         const screenshot = await page.screenshot({
-            //fullPage: true
+            fullPage: false,
+            type: 'png'
         });
 
         await browser.close();
 
-        // Cache the screenshot
         fs.writeFileSync(cacheFile, screenshot);
 
         res.json({
@@ -97,7 +91,6 @@ app.get('/screenshot', async (req, res) => {
     }
 });
 
-// Serve cached screenshots
 app.use('/cache', express.static(cacheDir));
 
 app.listen(port, () => {
