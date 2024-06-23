@@ -65,9 +65,13 @@ app.get('/screenshot', async (req, res) => {
         const description = await page.$eval('meta[name="description"]', element => element.content).catch(() => '');
         const h1 = await page.$eval('h1', element => element.innerText).catch(() => '');
 
+        console.log(`Title: ${title}`);
+        console.log(`Description: ${description}`);
+        console.log(`H1: ${h1}`);
+
         // Take screenshot with default size
         const screenshot = await page.screenshot({
-            fullPage: true
+            //fullPage: true
         });
 
         await browser.close();
