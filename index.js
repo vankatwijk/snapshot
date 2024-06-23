@@ -13,7 +13,7 @@ if (!fs.existsSync(cacheDir)) {
 }
 
 app.get('/screenshot', async (req, res) => {
-    const { url } = req.query;
+    const { url, device = 'desktop' } = req.query;  // Add device query parameter
 
     if (!url) {
         return res.status(400).send('URL is required');
@@ -49,8 +49,15 @@ app.get('/screenshot', async (req, res) => {
         // Check SSL
         const ssl = url.startsWith('https://');
 
-        // Navigate to the page
-        await page.goto(url, { waitUntil: 'networkidle2' });
+        // Set device emulation
+        if (device === 'mobile') {
+            await page.emulate(puppeteer.devices['iPhone 6']);
+        } else {
+            await page.setViewport({ width: 1280, height: 800 });
+        }
+
+        // Navigate to the page with a maximum load time of 20 seconds
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
         const loadTime = Date.now() - start;
 
         // Get SEO information
@@ -58,8 +65,10 @@ app.get('/screenshot', async (req, res) => {
         const description = await page.$eval('meta[name="description"]', element => element.content).catch(() => '');
         const h1 = await page.$eval('h1', element => element.innerText).catch(() => '');
 
-        // Take screenshot
-        const screenshot = await page.screenshot();
+        // Take screenshot with default size
+        const screenshot = await page.screenshot({
+            fullPage: true
+        });
 
         await browser.close();
 
