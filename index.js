@@ -3,13 +3,12 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const cors = require('cors'); // Import cors
+const cors = require('cors');
 
 const app = express();
 const port = 3000;
 const cacheDir = path.join(__dirname, 'cache');
 
-// Enable CORS
 app.use(cors());
 
 if (!fs.existsSync(cacheDir)) {
@@ -95,4 +94,15 @@ app.use('/cache', express.static(cacheDir));
 
 app.listen(port, () => {
     console.log(`Screenshot service running at http://localhost:${port}`);
+});
+
+// Catch unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Catch uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    process.exit(1); // Exit the process to avoid unknown states
 });
