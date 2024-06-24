@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const cors = require('cors');
 
 const app = express();
-const port = 8000;
+const port = 80;
 const cacheDir = path.join(__dirname, 'cache');
 
 app.use(cors());
