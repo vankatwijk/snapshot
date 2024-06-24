@@ -43,7 +43,7 @@ app.get('/screenshot', async (req, res) => {
     try {
         const start = Date.now();
         const browser = await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            args: ['--unlimited-storage', '--full-memory-crash-report','--no-sandbox', '--disable-setuid-sandbox'],
             ignoreHTTPSErrors: true
         });
         const page = await browser.newPage();
@@ -68,6 +68,7 @@ app.get('/screenshot', async (req, res) => {
             type: 'png'
         });
 
+        await page.close();
         await browser.close();
 
         fs.writeFileSync(cacheFile, screenshot);
