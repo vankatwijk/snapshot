@@ -99,7 +99,103 @@ Captures a screenshot of the specified URL and returns it along with some SEO in
 - `screenshotPath`: The path to the cached screenshot.
 - `cached`: Whether the screenshot was returned from cache.
 
-#### Example Request
+## Cloudflare Apache 2 setup
 
-```sh
-curl "http://localhost:3000/screenshot?url=https://example.com"
+1. Apache Configuration
+Locate the Apache Configuration File:
+Bitnami Apache configuration files are typically located at /opt/bitnami/apache2/conf/. The primary configuration file is often named bitnami.conf.
+Edit the Apache Configuration:
+
+Open the configuration file in your preferred text editor:
+```
+sudo nano /opt/bitnami/apache2/conf/bitnami/bitnami.conf
+```
+
+Add the Proxy Configuration:
+Update the file to include the following configuration, ensuring it properly proxies requests to your Node.js application:
+
+```
+<VirtualHost _default_:80>
+    ServerName snap.linkmaster.io
+    DocumentRoot "/opt/bitnami/apache2/htdocs"
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteRule ^/(.*) https://%{SERVER_NAME}/$1 [R,L]
+</VirtualHost>
+
+<VirtualHost _default_:443>
+    ServerName snap.linkmaster.io
+    SSLEngine on
+    SSLCertificateFile "/opt/bitnami/apache2/conf/bitnami/certs/server.crt"
+    SSLCertificateKeyFile "/opt/bitnami/apache2/conf/bitnami/certs/server.key"
+
+    ProxyRequests Off
+    ProxyPass / http://localhost:3000/
+    ProxyPassReverse / http://localhost:3000/
+
+    <Proxy *>
+        Order allow,deny
+        Allow from all
+    </Proxy>
+
+    # Add CORS headers
+    <Location />
+        Header set Access-Control-Allow-Origin "*"
+        Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+        Header set Access-Control-Allow-Headers "Origin, Content-Type, Accept"
+    </Location>
+</VirtualHost>
+```
+Save and Exit:
+Save the changes and exit the editor (Ctrl + O to save, Ctrl + X to exit in nano).
+
+Enable the Required Apache Modules
+Ensure that the necessary Apache modules are enabled. You might need to enable proxy, proxy_http, and headers modules.
+
+2. Enable Modules:
+
+Open the main Apache configuration file:
+```
+sudo nano /opt/bitnami/apache2/conf/httpd.conf
+```
+
+Ensure the following lines are present and uncommented:
+
+```
+LoadModule proxy_module modules/mod_proxy.so
+LoadModule proxy_http_module modules/mod_proxy_http.so
+LoadModule headers_module modules/mod_headers.so
+```
+Save the changes and exit the editor.
+
+Restart Apache
+To apply the changes, restart the Apache service. On a Bitnami stack, you usually use the ctlscript.sh to manage services.
+
+```
+sudo /opt/bitnami/ctlscript.sh restart apache
+```
+## Cloudflare Configuration
+
+Ensure that your Cloudflare settings are correctly configured to allow HTTPS traffic. Specifically, check the SSL/TLS settings and ensure that the mode is set to "Full" or "Full (strict)".
+
+Testing
+Test your endpoint to ensure it is working correctly:
+
+```
+curl "https://snap.linkmaster.io/screenshot?refresh=true&url=https://apple.com"
+```
+Troubleshooting
+If there are issues, check the logs for your Node.js application and Apache:
+
+Node.js logs: If using PM2, you can check the logs using:
+
+```
+pm2 logs screenshot-service
+```
+Apache logs: Usually found in /opt/bitnami/apache2/logs/:
+
+```
+sudo tail -f /opt/bitnami/apache2/logs/error_log
+sudo tail -f /opt/bitnami/apache2/logs/access_log
+```
+By following these steps, you should be able to ensure that your Node.js application is accessible via port 3000 through Apache on a Bitnami stack and that Cloudflare is properly configured to handle HTTPS traffic.
