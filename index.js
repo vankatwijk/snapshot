@@ -61,7 +61,10 @@ app.get('/screenshot', async (req, res) => {
 
         const title = await page.title();
         const description = await page.$eval('meta[name="description"]', element => element.content).catch(() => '');
-        const h1 = await page.$eval('h1', element => element.innerText).catch(() => '');
+        const h1 = await page.evaluate(() => {
+            const h1Element = document.querySelector('h1');
+            return h1Element ? h1Element.innerText : 'No h1 element found';
+        });
 
         const screenshot = await page.screenshot({
             fullPage: false,
