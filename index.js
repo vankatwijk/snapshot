@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const cors = require('cors');
+const launchBrowser = require('./launchBrowser'); // Import the launchBrowser function
+
 
 const app = express();
 const port = 3000;
@@ -42,10 +44,7 @@ app.get('/screenshot', async (req, res) => {
 
     try {
         const start = Date.now();
-        const browser = await puppeteer.launch({
-            args: ['--unlimited-storage', '--full-memory-crash-report','--no-sandbox', '--disable-setuid-sandbox'],
-            ignoreHTTPSErrors: true
-        });
+        const browser = await launchBrowser();
         const page = await browser.newPage();
 
         const ssl = url.startsWith('https://');
