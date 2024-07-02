@@ -4,7 +4,10 @@ const maxRetries = 5;
 async function launchBrowser(retries = 0) {
     try {
         return await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            args: ['--unlimited-storage', 
+                   '--full-memory-crash-report',
+                   '--no-sandbox', 
+                   '--disable-setuid-sandbox'],
             ignoreHTTPSErrors: true
         });
     } catch (error) {
