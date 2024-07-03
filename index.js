@@ -4,8 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const cors = require('cors');
-const launchBrowser = require('./launchBrowser'); // Import the launchBrowser function
-
+const sharp = require('sharp');
 
 const app = express();
 const port = 3000;
@@ -16,6 +15,24 @@ app.use(cors());
 if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir);
 }
+
+let browser;
+
+// Function to initialize the browser
+async function initBrowser() {
+    if (!browser) {
+        browser = await puppeteer.launch({
+            args: ['--unlimited-storage', '--full-memory-crash-report','--no-sandbox', '--disable-setuid-sandbox'],
+            ignoreHTTPSErrors: true
+        });
+    }
+}
+
+// Initialize the browser at startup
+initBrowser().catch(error => {
+    console.error('Failed to launch the browser:', error);
+    process.exit(1); // Exit the process to avoid unknown states
+});
 
 app.get('/screenshot', async (req, res) => {
     const { url, device = 'desktop', refresh = false } = req.query;
@@ -44,7 +61,6 @@ app.get('/screenshot', async (req, res) => {
 
     try {
         const start = Date.now();
-        const browser = await launchBrowser();
         const page = await browser.newPage();
 
         const ssl = url.startsWith('https://');
@@ -65,13 +81,16 @@ app.get('/screenshot', async (req, res) => {
             return h1Element ? h1Element.innerText : 'No h1 element found';
         });
 
-        const screenshot = await page.screenshot({
-            fullPage: false,
-            type: 'png'
-        });
+
+        const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'png' });
+
+        // Compress the screenshot using sharp
+        const compressedScreenshotBuffer = await sharp(screenshotBuffer)
+            .png({ quality: 80 }) // Adjust the quality as needed
+            .toBuffer();
 
         await page.close();
-        await browser.close();
+        //await browser.close();
 
         fs.writeFileSync(cacheFile, screenshot);
 
@@ -108,4 +127,16 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
     process.exit(1); // Exit the process to avoid unknown states
+});
+
+process.on('SIGINT', async () => {
+    console.log('SIGINT signal received: closing browser');
+    if (browser) await browser.close();
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM signal received: closing browser');
+    if (browser) await browser.close();
+    process.exit(0);
 });
