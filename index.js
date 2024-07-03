@@ -92,7 +92,7 @@ app.get('/screenshot', async (req, res) => {
         await page.close();
         //await browser.close();
 
-        fs.writeFileSync(cacheFile, compressedScreenshotBuffer);
+        await fs.writeFileSync(cacheFile, compressedScreenshotBuffer);
 
         res.json({
             url,
