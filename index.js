@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const cors = require('cors');
 const sharp = require('sharp');
+const sslChecker = require('ssl-checker');
 
 const app = express();
 const port = 3000;
@@ -37,8 +38,13 @@ initBrowser().catch(error => {
 app.get('/screenshot', async (req, res) => {
     const { url, device = 'desktop', refresh = false } = req.query;
 
-    if (!url) {
+    if (!inputUrl) {
         return res.status(400).send('URL is required');
+    }
+
+    let url = inputUrl;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
     }
 
     const hash = crypto.createHash('md5').update(url).digest('hex');
@@ -60,10 +66,16 @@ app.get('/screenshot', async (req, res) => {
     }
 
     try {
+        const sslCheck = await sslChecker(url.replace(/^http:\/\//i, ''), { method: 'GET', port: 443 });
+
+        if (!sslCheck.valid) {
+            return res.status(400).json({ error: 'Invalid SSL certificate' });
+        }
+        
         const start = Date.now();
         const page = await browser.newPage();
 
-        const ssl = url.startsWith('https://');
+        const ssl = sslCheck.valid;
 
         if (device === 'mobile') {
             await page.emulate(puppeteer.devices['iPhone 6']);
@@ -86,7 +98,7 @@ app.get('/screenshot', async (req, res) => {
 
         // Compress the screenshot using sharp
         const compressedScreenshotBuffer = await sharp(screenshotBuffer)
-            .png({ quality: 80 }) // Adjust the quality as needed
+            .png({ quality: 50 }) // Adjust the quality as needed
             .toBuffer();
 
         await page.close();
