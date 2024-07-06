@@ -23,7 +23,7 @@ let browser;
 async function initBrowser() {
     if (!browser) {
         browser = await puppeteer.launch({
-            args: ['--unlimited-storage', '--full-memory-crash-report','--no-sandbox', '--disable-setuid-sandbox'],
+            args: ['--unlimited-storage', '--full-memory-crash-report', '--no-sandbox', '--disable-setuid-sandbox'],
             ignoreHTTPSErrors: true
         });
     }
@@ -36,7 +36,7 @@ initBrowser().catch(error => {
 });
 
 app.get('/screenshot', async (req, res) => {
-    const { url, device = 'desktop', refresh = false } = req.query;
+    const { url: inputUrl, device = 'desktop', refresh = false } = req.query;
 
     if (!inputUrl) {
         return res.status(400).send('URL is required');
@@ -66,12 +66,12 @@ app.get('/screenshot', async (req, res) => {
     }
 
     try {
-        const sslCheck = await sslChecker(url.replace(/^http:\/\//i, ''), { method: 'GET', port: 443 });
+        const sslCheck = await sslChecker(url.replace(/^http(s)?:\/\//i, ''), { method: 'GET', port: 443 });
 
         if (!sslCheck.valid) {
             return res.status(400).json({ error: 'Invalid SSL certificate' });
         }
-        
+
         const start = Date.now();
         const page = await browser.newPage();
 
@@ -93,7 +93,6 @@ app.get('/screenshot', async (req, res) => {
             return h1Element ? h1Element.innerText : 'No h1 element found';
         });
 
-
         const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'png' });
 
         // Compress the screenshot using sharp
@@ -102,9 +101,8 @@ app.get('/screenshot', async (req, res) => {
             .toBuffer();
 
         await page.close();
-        //await browser.close();
 
-        await fs.writeFileSync(cacheFile, compressedScreenshotBuffer);
+        await fs.promises.writeFile(cacheFile, compressedScreenshotBuffer);
 
         res.json({
             url,
