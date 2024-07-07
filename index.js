@@ -17,25 +17,47 @@ if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir);
 }
 
-let browser;
+const BROWSER_POOL_SIZE = 3;
+const browserPool = [];
+let browserInitialized = false;
 
-// Function to initialize the browser
-async function initBrowser() {
-    if (!browser) {
-        browser = await puppeteer.launch({
-            args: ['--unlimited-storage', '--full-memory-crash-report', '--no-sandbox', '--disable-setuid-sandbox'],
-            ignoreHTTPSErrors: true
-        });
-    }
+async function createBrowser() {
+    const browser = await puppeteer.launch({
+        args: ['--unlimited-storage', '--full-memory-crash-report', '--no-sandbox', '--disable-setuid-sandbox'],
+        ignoreHTTPSErrors: true
+    });
+    return browser;
 }
 
-// Initialize the browser at startup
-initBrowser().catch(error => {
-    console.error('Failed to launch the browser:', error);
-    process.exit(1); // Exit the process to avoid unknown states
+async function initBrowserPool() {
+    for (let i = 0; i < BROWSER_POOL_SIZE; i++) {
+        const browser = await createBrowser();
+        browserPool.push(browser);
+    }
+    browserInitialized = true;
+}
+
+async function getBrowserFromPool() {
+    if (browserPool.length === 0) {
+        throw new Error('All browsers are busy');
+    }
+    return browserPool.pop();
+}
+
+function returnBrowserToPool(browser) {
+    browserPool.push(browser);
+}
+
+initBrowserPool().catch(error => {
+    console.error('Failed to initialize the browser pool:', error);
+    process.exit(1);
 });
 
 app.get('/screenshot', async (req, res) => {
+    if (!browserInitialized) {
+        return res.status(500).send('Browser pool not initialized');
+    }
+
     const { url: inputUrl, device = 'desktop', refresh = false } = req.query;
 
     if (!inputUrl) {
@@ -65,7 +87,9 @@ app.get('/screenshot', async (req, res) => {
         });
     }
 
+    let browser;
     try {
+        browser = await getBrowserFromPool();
         const sslCheck = await sslChecker(url.replace(/^http(s)?:\/\//i, ''), { method: 'GET', port: 443 });
 
         if (!sslCheck.valid) {
@@ -100,7 +124,7 @@ app.get('/screenshot', async (req, res) => {
             .png({ quality: 50 }) // Adjust the quality as needed
             .toBuffer();
 
-        await page.close();
+        await page.close(); // Close the page to free up memory
 
         await fs.promises.writeFile(cacheFile, compressedScreenshotBuffer);
 
@@ -119,6 +143,10 @@ app.get('/screenshot', async (req, res) => {
     } catch (error) {
         console.error('Error taking screenshot:', error);
         res.status(500).send(`Error taking screenshot: ${error.message}`);
+    } finally {
+        if (browser) {
+            returnBrowserToPool(browser);
+        }
     }
 });
 
@@ -141,12 +169,20 @@ process.on('uncaughtException', (error) => {
 
 process.on('SIGINT', async () => {
     console.log('SIGINT signal received: closing browser');
-    if (browser) await browser.close();
+    if (browserPool.length > 0) {
+        for (const browser of browserPool) {
+            await browser.close();
+        }
+    }
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
     console.log('SIGTERM signal received: closing browser');
-    if (browser) await browser.close();
+    if (browserPool.length > 0) {
+        for (const browser of browserPool) {
+            await browser.close();
+        }
+    }
     process.exit(0);
 });
