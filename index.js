@@ -22,19 +22,33 @@ const browserPool = [];
 let browserInitialized = false;
 
 async function createBrowser() {
-    const browser = await puppeteer.launch({
-        args: ['--unlimited-storage', '--full-memory-crash-report', '--no-sandbox', '--disable-setuid-sandbox'],
-        ignoreHTTPSErrors: true
-    });
-    return browser;
+    try {
+        const browser = await puppeteer.launch({
+            args: ['--unlimited-storage', '--full-memory-crash-report', '--no-sandbox', '--disable-setuid-sandbox'],
+            ignoreHTTPSErrors: true
+        });
+        return browser;
+    } catch (error) {
+        console.error('Failed to create a browser instance:', error);
+        throw error;
+    }
 }
 
 async function initBrowserPool() {
+    const browserPromises = [];
     for (let i = 0; i < BROWSER_POOL_SIZE; i++) {
-        const browser = await createBrowser();
-        browserPool.push(browser);
+        browserPromises.push(createBrowser());
     }
-    browserInitialized = true;
+
+    try {
+        const browsers = await Promise.all(browserPromises);
+        browserPool.push(...browsers);
+        browserInitialized = true;
+        console.log('Browser pool initialized with', BROWSER_POOL_SIZE, 'browsers');
+    } catch (error) {
+        console.error('Failed to initialize the browser pool:', error);
+        setTimeout(initBrowserPool, 5000); // Retry after 5 seconds
+    }
 }
 
 async function getBrowserFromPool() {
@@ -48,14 +62,11 @@ function returnBrowserToPool(browser) {
     browserPool.push(browser);
 }
 
-initBrowserPool().catch(error => {
-    console.error('Failed to initialize the browser pool:', error);
-    process.exit(1);
-});
+initBrowserPool();
 
 app.get('/screenshot', async (req, res) => {
     if (!browserInitialized) {
-        return res.status(500).send('Browser pool not initialized');
+        return res.status(503).send('Browser pool not initialized. Please try again later.');
     }
 
     const { url: inputUrl, device = 'desktop', refresh = false } = req.query;
