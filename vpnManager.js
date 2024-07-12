@@ -1,4 +1,3 @@
-// vpnManager.js
 const openvpnmanager = require('node-openvpn');
 const path = require('path');
 const fs = require('fs');
@@ -36,20 +35,24 @@ async function connectVpn(country) {
             verbosity: 1
         }, {
             host: '127.0.0.1',
-            port: 1337
+            port: 1337,
+            timeout: 1500
         });
 
         vpn.on('connected', () => {
+            console.log('VPN connected');
             currentVpnConnection = vpn;
             resolve();
         });
 
         vpn.on('error', (err) => {
+            console.error('VPN connection error:', err);
             reject(err);
         });
 
         vpn.on('disconnected', () => {
             currentVpnConnection = null;
+            console.log('VPN disconnected');
         });
     });
 }
@@ -60,6 +63,7 @@ function disconnectVpn() {
             currentVpnConnection.disconnect();
             currentVpnConnection.on('disconnected', () => {
                 currentVpnConnection = null;
+                console.log('VPN disconnected');
                 resolve();
             });
         } else {
