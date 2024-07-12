@@ -6,11 +6,11 @@ const fs = require('fs');
 const vpnConfigDir = path.join(__dirname, 'serverListUDP');
 
 const vpnConfigMap = {
-    Spain: 'NCVPN-ES-Valencia-TCP.ovpn',
-    France: 'NCVPN-FR-Paris-TCP.ovpn',
-    USA: 'NCVPN-US-Los Angeles-TCP.ovpn',
-    Canada: 'NCVPN-CA-Toronto-TCP.ovpn',
-    Japan: 'NCVPN-JP-Tokyo-TCP.ovpn'
+    Spain: 'NCVPN-ES-Valencia-UDP.ovpn',
+    France: 'NCVPN-FR-Paris-UDP.ovpn',
+    USA: 'NCVPN-US-Los Angeles-UDP.ovpn',
+    Canada: 'NCVPN-CA-Toronto-UDP.ovpn',
+    Japan: 'NCVPN-JP-Tokyo-UDP.ovpn'
 };
 
 let currentVpnConnection = null;
