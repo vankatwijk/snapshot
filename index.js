@@ -102,6 +102,7 @@ app.get('/screenshot', async (req, res) => {
     let browser;
     try {
         if (vpn) {
+            console.log(`Connecting to VPN: ${vpn}`);
             await connectVpn(vpn);
         }
 
@@ -123,7 +124,8 @@ app.get('/screenshot', async (req, res) => {
             await page.setViewport({ width: 1280, height: 800 });
         }
 
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
+        console.log(`Navigating to ${url}`);
+        await page.goto('https://www.whatismyip.com/', { waitUntil: 'networkidle2', timeout: 20000 }); // Use the IP checking website
         const loadTime = Date.now() - start;
 
         const title = await page.title();
