@@ -1,7 +1,6 @@
 const openvpnmanager = require('node-openvpn');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
 
 const vpnConfigDir = path.join(__dirname, 'serverListUDP');
 
