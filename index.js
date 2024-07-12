@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const cors = require('cors');
 const sharp = require('sharp');
 const sslChecker = require('ssl-checker');
+const { connectVpn, disconnectVpn } = require('./vpnManager'); // Import the VPN manager
 
 const app = express();
 const port = 3000;
@@ -69,7 +70,7 @@ app.get('/screenshot', async (req, res) => {
         return res.status(503).send('Browser pool not initialized. Please try again later.');
     }
 
-    const { url: inputUrl, device = 'desktop', refresh = false } = req.query;
+    const { url: inputUrl, device = 'desktop', refresh = false, vpn } = req.query;
 
     if (!inputUrl) {
         return res.status(400).send('URL is required');
@@ -100,6 +101,10 @@ app.get('/screenshot', async (req, res) => {
 
     let browser;
     try {
+        if (vpn) {
+            await connectVpn(vpn);
+        }
+
         browser = await getBrowserFromPool();
         const sslCheck = await sslChecker(url.replace(/^http(s)?:\/\//i, ''), { method: 'GET', port: 443 });
 
@@ -157,6 +162,9 @@ app.get('/screenshot', async (req, res) => {
     } finally {
         if (browser) {
             returnBrowserToPool(browser);
+        }
+        if (vpn) {
+            await disconnectVpn();
         }
     }
 });
