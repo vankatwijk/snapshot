@@ -1,6 +1,7 @@
 // vpnManager.js
 const { openvpnmanager } = require('node-openvpn');
 const path = require('path');
+const fs = require('fs');
 
 const vpnConfigDir = path.join(__dirname, 'serverListTCP');
 
@@ -20,9 +21,19 @@ async function connectVpn(country) {
     }
 
     const configFilePath = path.join(vpnConfigDir, vpnConfigMap[country]);
+    const authFilePath = path.join(vpnConfigDir, 'auth.txt');
+
+    // Ensure the auth file exists
+    if (!fs.existsSync(authFilePath)) {
+        throw new Error('VPN authentication file not found');
+    }
+
     return new Promise((resolve, reject) => {
         const vpn = openvpnmanager.connect({
-            config: configFilePath
+            config: configFilePath,
+            scripts: {
+                up: authFilePath
+            }
         });
 
         vpn.on('connected', () => {
