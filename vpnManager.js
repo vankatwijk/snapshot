@@ -3,7 +3,7 @@ const openvpnmanager = require('node-openvpn');
 const path = require('path');
 const fs = require('fs');
 
-const vpnConfigDir = path.join(__dirname, 'serverListUDP');
+const vpnConfigDir = path.join(__dirname, 'serverListTCP');
 
 const vpnConfigMap = {
     Spain: 'NCVPN-ES-Valencia-TCP.ovpn',
@@ -32,7 +32,11 @@ async function connectVpn(country) {
         const vpn = openvpnmanager.connect({
             config: configFilePath,
             ovpnOptions: ['--auth-user-pass', authFilePath],
-            logpath: 'log.txt'
+            logpath: 'log.txt',
+            verbosity: 1
+        }, {
+            host: '127.0.0.1',
+            port: 1337
         });
 
         vpn.on('connected', () => {
