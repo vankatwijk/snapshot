@@ -3,7 +3,7 @@ const { openvpnmanager } = require('node-openvpn');
 const path = require('path');
 const fs = require('fs');
 
-const vpnConfigDir = path.join(__dirname, 'serverListTCP');
+const vpnConfigDir = path.join(__dirname, 'serverListUDP');
 
 const vpnConfigMap = {
     Spain: 'NCVPN-ES-Valencia-TCP.ovpn',
