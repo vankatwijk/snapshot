@@ -17,6 +17,7 @@ let currentVpnConnection = null;
 function connectVpn(country) {
     return new Promise((resolve, reject) => {
         if (currentVpnConnection) {
+            console.log('Disconnecting current VPN connection');
             disconnectVpn().catch(reject);
         }
 
@@ -28,7 +29,7 @@ function connectVpn(country) {
         }
 
         console.log(`Connecting to VPN with config: ${configFilePath}`);
-        const vpn = openvpnmanager.connect({
+        currentVpnConnection = openvpnmanager.connect({
             config: configFilePath,
             ovpnOptions: ['--auth-user-pass', authFilePath],
             logpath: 'log.txt',
@@ -39,20 +40,18 @@ function connectVpn(country) {
             timeout: 1500
         });
 
-        vpn.on('connected', async () => {
+        currentVpnConnection.on('connected', async () => {
             console.log('VPN connected');
-            currentVpnConnection = vpn;
-            // Add delay to ensure connection
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Add delay to ensure connection
             resolve();
         });
 
-        vpn.on('error', (err) => {
+        currentVpnConnection.on('error', (err) => {
             console.error('VPN connection error:', err);
             reject(err);
         });
 
-        vpn.on('disconnected', () => {
+        currentVpnConnection.on('disconnected', () => {
             currentVpnConnection = null;
             console.log('VPN disconnected');
         });
@@ -62,13 +61,19 @@ function connectVpn(country) {
 function disconnectVpn() {
     return new Promise((resolve, reject) => {
         if (currentVpnConnection) {
+            console.log('Disconnecting VPN');
             currentVpnConnection.disconnect();
             currentVpnConnection.on('disconnected', () => {
                 currentVpnConnection = null;
                 console.log('VPN disconnected');
                 resolve();
             });
+            currentVpnConnection.on('error', (err) => {
+                console.error('Error during VPN disconnection:', err);
+                reject(err);
+            });
         } else {
+            console.log('No VPN connection to disconnect');
             resolve();
         }
     });
