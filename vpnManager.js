@@ -14,6 +14,7 @@ const vpnConfigMap = {
 };
 
 let currentVpnProcess = null;
+let managementPort = 1337;
 
 function killProcess(pid, signal = 'SIGKILL') {
     return new Promise((resolve, reject) => {
@@ -47,7 +48,7 @@ async function connectVpn(country) {
 
     return new Promise((resolve, reject) => {
         console.log(`Connecting to VPN with config: ${configFilePath}`);
-        currentVpnProcess = exec(`sudo /usr/sbin/openvpn --config "${configFilePath}" --auth-user-pass "${authFilePath}"`);
+        currentVpnProcess = exec(`sudo /usr/sbin/openvpn --config "${configFilePath}" --auth-user-pass "${authFilePath}" --management 127.0.0.1 ${managementPort}`);
 
         currentVpnProcess.stdout.on('data', data => {
             console.log('stdout:', data);
@@ -59,6 +60,11 @@ async function connectVpn(country) {
 
         currentVpnProcess.stderr.on('data', data => {
             console.error('stderr:', data);
+            if (data.includes('Address already in use')) {
+                managementPort += 1;  // Increment the port number and retry
+                console.log(`Port in use, trying next port: ${managementPort}`);
+                connectVpn(country).then(resolve).catch(reject);
+            }
         });
 
         currentVpnProcess.on('close', code => {
