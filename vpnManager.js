@@ -47,7 +47,7 @@ async function connectVpn(country) {
 
     return new Promise((resolve, reject) => {
         console.log(`Connecting to VPN with config: ${configFilePath}`);
-        currentVpnProcess = exec(`openvpn --config "${configFilePath}" --auth-user-pass "${authFilePath}"`);
+        currentVpnProcess = exec(`sudo /usr/sbin/openvpn --config "${configFilePath}" --auth-user-pass "${authFilePath}"`);
 
         currentVpnProcess.stdout.on('data', data => {
             console.log('stdout:', data);
