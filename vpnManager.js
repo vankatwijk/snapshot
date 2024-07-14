@@ -1,4 +1,5 @@
-const openvpnmanager = require('node-openvpn');
+const { exec } = require('child_process');
+const psTree = require('ps-tree');
 const path = require('path');
 const fs = require('fs');
 
@@ -12,10 +13,28 @@ const vpnConfigMap = {
     Japan: 'NCVPN-JP-Tokyo-UDP.ovpn'
 };
 
-let currentVpnConnection = null;
+let currentVpnProcess = null;
+
+function killProcess(pid, signal = 'SIGKILL') {
+    return new Promise((resolve, reject) => {
+        psTree(pid, (err, children) => {
+            if (err) {
+                return reject(err);
+            }
+            [pid].concat(children.map(p => p.PID)).forEach(tpid => {
+                try {
+                    process.kill(tpid, signal);
+                } catch (ex) {
+                    // ignore
+                }
+            });
+            resolve();
+        });
+    });
+}
 
 async function connectVpn(country) {
-    if (currentVpnConnection) {
+    if (currentVpnProcess) {
         await disconnectVpn();
     }
 
@@ -28,47 +47,46 @@ async function connectVpn(country) {
 
     return new Promise((resolve, reject) => {
         console.log(`Connecting to VPN with config: ${configFilePath}`);
-        currentVpnConnection = openvpnmanager.connect({
-            config: configFilePath,
-            ovpnOptions: ['--auth-user-pass', authFilePath],
-            logpath: 'log.txt',
-            verbosity: 1
+        currentVpnProcess = exec(`openvpn --config "${configFilePath}" --auth-user-pass "${authFilePath}"`);
+
+        currentVpnProcess.stdout.on('data', data => {
+            console.log('stdout:', data);
+            if (data.includes('Initialization Sequence Completed')) {
+                console.log('VPN connected');
+                resolve();
+            }
         });
 
-        currentVpnConnection.on('connected', async () => {
-            console.log('VPN connected');
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Add delay to ensure connection
-            resolve();
+        currentVpnProcess.stderr.on('data', data => {
+            console.error('stderr:', data);
         });
 
-        currentVpnConnection.on('error', (err) => {
-            console.error('VPN connection error:', err);
+        currentVpnProcess.on('close', code => {
+            console.log('VPN process closed with code:', code);
+            currentVpnProcess = null;
+        });
+
+        currentVpnProcess.on('error', err => {
+            console.error('VPN process error:', err);
             reject(err);
-        });
-
-        currentVpnConnection.on('disconnected', () => {
-            currentVpnConnection = null;
-            console.log('VPN disconnected');
         });
     });
 }
 
 function disconnectVpn() {
     return new Promise((resolve, reject) => {
-        if (currentVpnConnection) {
+        if (currentVpnProcess) {
             console.log('Disconnecting VPN');
-            currentVpnConnection.on('disconnected', () => {
-                currentVpnConnection = null;
-                console.log('VPN disconnected');
-                resolve();
-            });
-
-            currentVpnConnection.on('error', (err) => {
-                console.error('Error during VPN disconnection:', err);
-                reject(err);
-            });
-
-            currentVpnConnection.disconnect();
+            killProcess(currentVpnProcess.pid)
+                .then(() => {
+                    console.log('VPN disconnected');
+                    currentVpnProcess = null;
+                    resolve();
+                })
+                .catch(err => {
+                    console.error('Error during VPN disconnection:', err);
+                    reject(err);
+                });
         } else {
             console.log('No VPN connection to disconnect');
             resolve();
