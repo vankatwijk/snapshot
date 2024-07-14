@@ -1,11 +1,9 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const cors = require('cors');
-const sharp = require('sharp');
-const sslChecker = require('ssl-checker');
+const { fork } = require('child_process');
 const { connectVpn, disconnectVpn } = require('./vpnManager');
 
 const app = express();
@@ -18,53 +16,7 @@ if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir);
 }
 
-const BROWSER_POOL_SIZE = 3;
-const browserPool = [];
-let browserInitialized = false;
-
-async function createBrowser() {
-    try {
-        return await puppeteer.launch({
-            args: ['--unlimited-storage', '--full-memory-crash-report', '--no-sandbox', '--disable-setuid-sandbox'],
-            ignoreHTTPSErrors: true
-        });
-    } catch (error) {
-        console.error('Failed to create a browser instance:', error);
-        throw error;
-    }
-}
-
-async function initBrowserPool() {
-    try {
-        const browserPromises = Array.from({ length: BROWSER_POOL_SIZE }, createBrowser);
-        const browsers = await Promise.all(browserPromises);
-        browserPool.push(...browsers);
-        browserInitialized = true;
-        console.log('Browser pool initialized with', BROWSER_POOL_SIZE, 'browsers');
-    } catch (error) {
-        console.error('Failed to initialize the browser pool:', error);
-        setTimeout(initBrowserPool, 5000);
-    }
-}
-
-function getBrowserFromPool() {
-    if (browserPool.length === 0) {
-        throw new Error('All browsers are busy');
-    }
-    return browserPool.pop();
-}
-
-function returnBrowserToPool(browser) {
-    browserPool.push(browser);
-}
-
-initBrowserPool();
-
 app.get('/screenshot', async (req, res) => {
-    if (!browserInitialized) {
-        return res.status(503).send('Browser pool not initialized. Please try again later.');
-    }
-
     const { url: inputUrl, device = 'desktop', refresh = false, vpn } = req.query;
 
     if (!inputUrl) {
@@ -90,24 +42,80 @@ app.get('/screenshot', async (req, res) => {
         });
     }
 
-    let browser;
-    try {
-        if (vpn) {
+    if (vpn) {
+        try {
             console.log(`Connecting to VPN: ${vpn}`);
             await connectVpn(vpn);
+        } catch (error) {
+            console.error('Error connecting to VPN:', error);
+            return res.status(500).send(`Error connecting to VPN: ${error.message}`);
+        }
+    }
+
+    const child = fork(path.join(__dirname, 'screenshotWorker.js'));
+
+    child.on('message', async (message) => {
+        if (message.error) {
+            res.status(500).send(`Error taking screenshot: ${message.error}`);
+        } else {
+            res.json(message);
         }
 
-        browser = await getBrowserFromPool();
-        const sslCheck = await sslChecker(url.replace(/^http(s)?:\/\//i, ''), { method: 'GET', port: 443 });
-
-        if (!sslCheck.valid) {
-            return res.status(400).json({ error: 'Invalid SSL certificate' });
+        if (vpn) {
+            try {
+                await disconnectVpn();
+            } catch (error) {
+                console.error('Error disconnecting VPN:', error);
+            }
         }
+    });
 
-        const start = Date.now();
+    child.send({ url, device, cacheFile });
+});
+
+app.use('/cache', express.static(cacheDir));
+
+app.listen(port, () => {
+    console.log(`Screenshot service running at http://localhost:${port}`);
+});
+
+process.on('SIGINT', async () => {
+    console.log('SIGINT signal received: closing browsers and disconnecting VPN');
+    try {
+        await disconnectVpn();
+    } catch (error) {
+        console.error('Error disconnecting VPN:', error);
+    }
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM signal received: closing browsers and disconnecting VPN');
+    try {
+        await disconnectVpn();
+    } catch (error) {
+        console.error('Error disconnecting VPN:', error);
+    }
+    process.exit(0);
+});
+Updated screenshotWorker.js
+Ensure proper handling of the Puppeteer process.
+
+javascript
+Copy code
+const puppeteer = require('puppeteer');
+const fs = require('fs');
+const sharp = require('sharp');
+
+process.on('message', async ({ url, device, cacheFile }) => {
+    let browser;
+    try {
+        browser = await puppeteer.launch({
+            args: ['--unlimited-storage', '--full-memory-crash-report', '--no-sandbox', '--disable-setuid-sandbox'],
+            ignoreHTTPSErrors: true
+        });
+
         const page = await browser.newPage();
-
-        const ssl = sslCheck.valid;
 
         if (device === 'mobile') {
             await page.emulate(puppeteer.devices['iPhone 6']);
@@ -117,8 +125,7 @@ app.get('/screenshot', async (req, res) => {
 
         console.log(`Navigating to ${url}`);
         await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
-        const loadTime = Date.now() - start;
-
+        
         const title = await page.title();
         const description = await page.$eval('meta[name="description"]', element => element.content).catch(() => '');
         const h1 = await page.evaluate(() => {
@@ -134,62 +141,23 @@ app.get('/screenshot', async (req, res) => {
 
         await fs.promises.writeFile(cacheFile, compressedScreenshotBuffer);
 
-        res.json({
+        process.send({
             url,
-            ssl,
-            loadTime,
+            ssl: url.startsWith('https://'),
             seo: {
                 title,
                 description,
                 h1
             },
-            screenshotPath: `/cache/${hash}.png`,
+            screenshotPath: `/cache/${path.basename(cacheFile)}`,
             cached: false
         });
     } catch (error) {
         console.error('Error taking screenshot:', error);
-        res.status(500).send(`Error taking screenshot: ${error.message}`);
+        process.send({ error: error.message });
     } finally {
         if (browser) {
-            returnBrowserToPool(browser);
-        }
-        if (vpn) {
-            await disconnectVpn();
-        }
-    }
-});
-
-app.use('/cache', express.static(cacheDir));
-
-app.listen(port, () => {
-    console.log(`Screenshot service running at http://localhost:${port}`);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-    process.exit(1);
-});
-
-process.on('SIGINT', async () => {
-    console.log('SIGINT signal received: closing browser');
-    if (browserPool.length > 0) {
-        for (const browser of browserPool) {
             await browser.close();
         }
     }
-    process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-    console.log('SIGTERM signal received: closing browser');
-    if (browserPool.length > 0) {
-        for (const browser of browserPool) {
-            await browser.close();
-        }
-    }
-    process.exit(0);
 });
