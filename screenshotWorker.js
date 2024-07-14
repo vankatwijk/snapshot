@@ -57,3 +57,4 @@ process.on('message', async ({ url, device, cacheFile }) => {
         }
     }
 });
+
