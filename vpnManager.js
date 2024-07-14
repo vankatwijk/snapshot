@@ -14,20 +14,19 @@ const vpnConfigMap = {
 
 let currentVpnConnection = null;
 
-async function connectVpn(country) {
-    if (currentVpnConnection) {
-        await disconnectVpn();
-    }
-
-    const configFilePath = path.join(vpnConfigDir, vpnConfigMap[country]);
-    const authFilePath = path.join(vpnConfigDir, 'auth.txt');
-
-    // Ensure the auth file exists
-    if (!fs.existsSync(authFilePath)) {
-        throw new Error('VPN authentication file not found');
-    }
-
+function connectVpn(country) {
     return new Promise((resolve, reject) => {
+        if (currentVpnConnection) {
+            disconnectVpn().catch(reject);
+        }
+
+        const configFilePath = path.join(vpnConfigDir, vpnConfigMap[country]);
+        const authFilePath = path.join(vpnConfigDir, 'auth.txt');
+
+        if (!fs.existsSync(authFilePath)) {
+            return reject(new Error('VPN authentication file not found'));
+        }
+
         console.log(`Connecting to VPN with config: ${configFilePath}`);
         const vpn = openvpnmanager.connect({
             config: configFilePath,
@@ -43,7 +42,8 @@ async function connectVpn(country) {
         vpn.on('connected', async () => {
             console.log('VPN connected');
             currentVpnConnection = vpn;
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Add delay to ensure connection
+            // Add delay to ensure connection
+            await new Promise(resolve => setTimeout(resolve, 5000));
             resolve();
         });
 
@@ -60,7 +60,7 @@ async function connectVpn(country) {
 }
 
 function disconnectVpn() {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         if (currentVpnConnection) {
             currentVpnConnection.disconnect();
             currentVpnConnection.on('disconnected', () => {
