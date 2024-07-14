@@ -14,30 +14,25 @@ const vpnConfigMap = {
 
 let currentVpnConnection = null;
 
-function connectVpn(country) {
+async function connectVpn(country) {
+    if (currentVpnConnection) {
+        await disconnectVpn();
+    }
+
+    const configFilePath = path.join(vpnConfigDir, vpnConfigMap[country]);
+    const authFilePath = path.join(vpnConfigDir, 'auth.txt');
+
+    if (!fs.existsSync(authFilePath)) {
+        throw new Error('VPN authentication file not found');
+    }
+
     return new Promise((resolve, reject) => {
-        if (currentVpnConnection) {
-            console.log('Disconnecting current VPN connection');
-            disconnectVpn().catch(reject);
-        }
-
-        const configFilePath = path.join(vpnConfigDir, vpnConfigMap[country]);
-        const authFilePath = path.join(vpnConfigDir, 'auth.txt');
-
-        if (!fs.existsSync(authFilePath)) {
-            return reject(new Error('VPN authentication file not found'));
-        }
-
         console.log(`Connecting to VPN with config: ${configFilePath}`);
         currentVpnConnection = openvpnmanager.connect({
             config: configFilePath,
             ovpnOptions: ['--auth-user-pass', authFilePath],
             logpath: 'log.txt',
             verbosity: 1
-        }, {
-            host: '127.0.0.1',
-            port: 1337,
-            timeout: 1500
         });
 
         currentVpnConnection.on('connected', async () => {
@@ -62,16 +57,18 @@ function disconnectVpn() {
     return new Promise((resolve, reject) => {
         if (currentVpnConnection) {
             console.log('Disconnecting VPN');
-            currentVpnConnection.disconnect();
             currentVpnConnection.on('disconnected', () => {
                 currentVpnConnection = null;
                 console.log('VPN disconnected');
                 resolve();
             });
+
             currentVpnConnection.on('error', (err) => {
                 console.error('Error during VPN disconnection:', err);
                 reject(err);
             });
+
+            currentVpnConnection.disconnect();
         } else {
             console.log('No VPN connection to disconnect');
             resolve();
