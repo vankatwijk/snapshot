@@ -47,35 +47,38 @@ async function connectVpn(country) {
     }
 
     return new Promise((resolve, reject) => {
-        console.log(`Connecting to VPN with config: ${configFilePath}`);
-        currentVpnProcess = exec(`sudo /usr/sbin/openvpn --config "${configFilePath}" --auth-user-pass "${authFilePath}" --management 127.0.0.1 ${managementPort}`);
+        function attemptConnection(port) {
+            console.log(`Connecting to VPN with config: ${configFilePath} on management port: ${port}`);
+            currentVpnProcess = exec(`sudo /usr/sbin/openvpn --config "${configFilePath}" --auth-user-pass "${authFilePath}" --management 127.0.0.1 ${port}`);
 
-        currentVpnProcess.stdout.on('data', data => {
-            console.log('stdout:', data);
-            if (data.includes('Initialization Sequence Completed')) {
-                console.log('VPN connected');
-                resolve();
-            }
-        });
+            currentVpnProcess.stdout.on('data', data => {
+                console.log('stdout:', data);
+                if (data.includes('Initialization Sequence Completed')) {
+                    console.log('VPN connected');
+                    managementPort = port;  // Save the successful port
+                    resolve();
+                }
+            });
 
-        currentVpnProcess.stderr.on('data', data => {
-            console.error('stderr:', data);
-            if (data.includes('Address already in use')) {
-                managementPort += 1;  // Increment the port number and retry
-                console.log(`Port in use, trying next port: ${managementPort}`);
-                connectVpn(country).then(resolve).catch(reject);
-            }
-        });
+            currentVpnProcess.stderr.on('data', data => {
+                console.error('stderr:', data);
+                if (data.includes('Address already in use')) {
+                    attemptConnection(port + 1);  // Increment the port number and retry
+                }
+            });
 
-        currentVpnProcess.on('close', code => {
-            console.log('VPN process closed with code:', code);
-            currentVpnProcess = null;
-        });
+            currentVpnProcess.on('close', code => {
+                console.log('VPN process closed with code:', code);
+                currentVpnProcess = null;
+            });
 
-        currentVpnProcess.on('error', err => {
-            console.error('VPN process error:', err);
-            reject(err);
-        });
+            currentVpnProcess.on('error', err => {
+                console.error('VPN process error:', err);
+                reject(err);
+            });
+        }
+
+        attemptConnection(managementPort);
     });
 }
 
@@ -92,10 +95,15 @@ function disconnectVpn() {
                 console.error('Error during VPN process termination:', err);
                 reject(err);
             });
-            killProcess(currentVpnProcess.pid).catch(err => {
-                console.error('Error during VPN process kill:', err);
-                reject(err);
-            });
+            killProcess(currentVpnProcess.pid)
+                .then(() => {
+                    console.log('VPN process killed');
+                    resolve();
+                })
+                .catch(err => {
+                    console.error('Error during VPN process kill:', err);
+                    reject(err);
+                });
         } else {
             console.log('No VPN connection to disconnect');
             resolve();
