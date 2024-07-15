@@ -63,13 +63,19 @@ async function connectVpn(country) {
             currentVpnProcess.stderr.on('data', data => {
                 console.error('stderr:', data);
                 if (data.includes('Address already in use')) {
+                    console.log(`Port ${port} in use, trying next port: ${port + 1}`);
                     attemptConnection(port + 1);  // Increment the port number and retry
+                } else {
+                    reject(new Error(data));
                 }
             });
 
             currentVpnProcess.on('close', code => {
                 console.log('VPN process closed with code:', code);
                 currentVpnProcess = null;
+                if (code !== 0 && code !== 1) {
+                    reject(new Error(`VPN process exited with code: ${code}`));
+                }
             });
 
             currentVpnProcess.on('error', err => {
