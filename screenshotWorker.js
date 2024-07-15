@@ -1,6 +1,6 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
-const path = require('path');
+const path = require('path');  // Add this line
 const sharp = require('sharp');
 
 process.on('message', async ({ url, device, cacheFile }) => {
@@ -57,4 +57,3 @@ process.on('message', async ({ url, device, cacheFile }) => {
         }
     }
 });
-
