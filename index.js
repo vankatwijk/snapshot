@@ -25,7 +25,15 @@ let browserInitialized = false;
 async function createBrowser() {
     try {
         const browser = await puppeteer.launch({
-            args: ['--unlimited-storage', '--full-memory-crash-report', '--no-sandbox', '--disable-setuid-sandbox'],
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--no-zygote',
+                '--single-process'
+            ],
             ignoreHTTPSErrors: true
         });
         return browser;
