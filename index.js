@@ -1,4 +1,3 @@
-
 const express = require('express');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
@@ -18,7 +17,7 @@ if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir);
 }
 
-const BROWSER_POOL_SIZE = 3;
+const BROWSER_POOL_SIZE = 5;
 const browserPool = [];
 let browserInitialized = false;
 
@@ -33,8 +32,7 @@ async function createBrowser() {
                 '--disable-gpu',
                 '--no-zygote',
                 '--single-process'
-            ],
-            ignoreHTTPSErrors: true
+            ]
         });
         return browser;
     } catch (error) {
@@ -44,19 +42,19 @@ async function createBrowser() {
 }
 
 async function initBrowserPool() {
-    const browserPromises = [];
-    for (let i = 0; i < BROWSER_POOL_SIZE; i++) {
-        browserPromises.push(createBrowser());
-    }
-
     try {
+        const browserPromises = [];
+        for (let i = 0; i < BROWSER_POOL_SIZE; i++) {
+            browserPromises.push(createBrowser());
+        }
         const browsers = await Promise.all(browserPromises);
         browserPool.push(...browsers);
         browserInitialized = true;
         console.log('Browser pool initialized with', BROWSER_POOL_SIZE, 'browsers');
     } catch (error) {
         console.error('Failed to initialize the browser pool:', error);
-        setTimeout(initBrowserPool, 5000); // Retry after 5 seconds
+        // Retry initialization after a delay
+        setTimeout(initBrowserPool, 10000); // Retry after 10 seconds
     }
 }
 
@@ -127,7 +125,7 @@ app.get('/screenshot', async (req, res) => {
             await page.setViewport({ width: 1280, height: 800 });
         }
 
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
         const loadTime = Date.now() - start;
 
         const title = await page.title();
@@ -172,37 +170,19 @@ app.get('/screenshot', async (req, res) => {
 
 app.use('/cache', express.static(cacheDir));
 
+// Shutdown handler: closes all browsers in the pool
+async function shutdown() {
+    console.log('Shutting down, closing all browser instances...');
+    for (const browser of browserPool) {
+        await browser.close();
+    }
+    process.exit(0);
+}
+
+// Handle PM2 shutdown signals
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
 app.listen(port, () => {
     console.log(`Screenshot service running at http://localhost:${port}`);
-});
-
-// Catch unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-// Catch uncaught exceptions
-process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-    process.exit(1); // Exit the process to avoid unknown states
-});
-
-process.on('SIGINT', async () => {
-    console.log('SIGINT signal received: closing browser');
-    if (browserPool.length > 0) {
-        for (const browser of browserPool) {
-            await browser.close();
-        }
-    }
-    process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-    console.log('SIGTERM signal received: closing browser');
-    if (browserPool.length > 0) {
-        for (const browser of browserPool) {
-            await browser.close();
-        }
-    }
-    process.exit(0);
 });
