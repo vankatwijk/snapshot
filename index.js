@@ -17,65 +17,7 @@ if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir);
 }
 
-const BROWSER_POOL_SIZE = 5;
-const browserPool = [];
-let browserInitialized = false;
-
-async function createBrowser() {
-    try {
-        const browser = await puppeteer.launch({
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--no-zygote',
-                '--single-process'
-            ]
-        });
-        return browser;
-    } catch (error) {
-        console.error('Failed to create a browser instance:', error);
-        throw error;
-    }
-}
-
-async function initBrowserPool() {
-    try {
-        const browserPromises = [];
-        for (let i = 0; i < BROWSER_POOL_SIZE; i++) {
-            browserPromises.push(createBrowser());
-        }
-        const browsers = await Promise.all(browserPromises);
-        browserPool.push(...browsers);
-        browserInitialized = true;
-        console.log('Browser pool initialized with', BROWSER_POOL_SIZE, 'browsers');
-    } catch (error) {
-        console.error('Failed to initialize the browser pool:', error);
-        // Retry initialization after a delay
-        setTimeout(initBrowserPool, 10000); // Retry after 10 seconds
-    }
-}
-
-async function getBrowserFromPool() {
-    if (browserPool.length === 0) {
-        throw new Error('All browsers are busy');
-    }
-    return browserPool.pop();
-}
-
-function returnBrowserToPool(browser) {
-    browserPool.push(browser);
-}
-
-initBrowserPool();
-
 app.get('/screenshot', async (req, res) => {
-    if (!browserInitialized) {
-        return res.status(503).send('Browser pool not initialized. Please try again later.');
-    }
-
     const { url: inputUrl, device = 'desktop', refresh = false } = req.query;
 
     if (!inputUrl) {
@@ -107,7 +49,41 @@ app.get('/screenshot', async (req, res) => {
 
     let browser;
     try {
-        browser = await getBrowserFromPool();
+        // Launch a new browser instance
+        browser = await puppeteer.launch({
+            args: [
+                '--no-sandbox', // Disables the sandbox, can improve performance, but slightly less secure
+                '--disable-setuid-sandbox', // Disables the setuid sandbox
+                '--disable-dev-shm-usage', // Avoid using `/dev/shm` (shared memory), useful in low-memory environments
+                '--disable-accelerated-2d-canvas', // Disables hardware acceleration for 2D canvas, reduces GPU usage
+                '--disable-gpu', // Disables GPU hardware acceleration, reduces GPU usage
+                '--no-zygote', // Disables the zygote process forking, which is used to spawn renderer processes
+                '--single-process', // Runs Chrome in a single process, reduces memory usage
+                '--disable-background-networking', // Disables background networking
+                '--disable-background-timer-throttling', // Disables throttling of background timers
+                '--disable-backgrounding-occluded-windows', // Disables backgrounding of windows when they are not visible
+                '--disable-breakpad', // Disables crash reporting
+                '--disable-client-side-phishing-detection', // Disables client-side phishing detection
+                '--disable-default-apps', // Disables default apps on Chrome
+                '--disable-extensions', // Disables all extensions
+                '--disable-hang-monitor', // Disables the hang monitor
+                '--disable-popup-blocking', // Disables popup blocking
+                '--disable-prompt-on-repost', // Disables prompt on repost
+                '--disable-sync', // Disables syncing to Google services
+                '--disable-translate', // Disables built-in Google Translate service
+                '--metrics-recording-only', // Enables only metrics recording, useful for performance monitoring
+                '--mute-audio', // Mutes any audio output from Chrome
+                '--no-first-run', // Skips the first run wizards
+                '--safebrowsing-disable-auto-update', // Disables auto-updates of Safe Browsing
+                '--ignore-certificate-errors', // Ignores certificate errors
+                '--ignore-ssl-errors', // Ignores SSL errors
+                '--no-default-browser-check', // Skips default browser check
+                '--disable-infobars', // Disables infobars that could be shown on top of the page
+            ],
+            headless: true
+        });
+
+        // Check SSL
         const sslCheck = await sslChecker(url.replace(/^http(s)?:\/\//i, ''), { method: 'GET', port: 443 });
 
         if (!sslCheck.valid) {
@@ -142,8 +118,6 @@ app.get('/screenshot', async (req, res) => {
             .png({ quality: 50 }) // Adjust the quality as needed
             .toBuffer();
 
-        await page.close(); // Close the page to free up memory
-
         await fs.promises.writeFile(cacheFile, compressedScreenshotBuffer);
 
         res.json({
@@ -163,25 +137,23 @@ app.get('/screenshot', async (req, res) => {
         res.status(500).send(`Error taking screenshot: ${error.message}`);
     } finally {
         if (browser) {
-            returnBrowserToPool(browser);
+            await browser.close(); // Ensure the browser is closed
         }
     }
 });
 
 app.use('/cache', express.static(cacheDir));
 
-// Shutdown handler: closes all browsers in the pool
-async function shutdown() {
-    console.log('Shutting down, closing all browser instances...');
-    for (const browser of browserPool) {
-        await browser.close();
-    }
-    process.exit(0);
-}
-
 // Handle PM2 shutdown signals
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', async () => {
+    console.log('SIGINT signal received: closing browser if open');
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM signal received: closing browser if open');
+    process.exit(0);
+});
 
 app.listen(port, () => {
     console.log(`Screenshot service running at http://localhost:${port}`);
