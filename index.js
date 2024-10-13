@@ -30,11 +30,11 @@ const proxies = {
 async function getBrowserInstance(proxy) {
     if (!browserInstance) {
         const args = [
-            '--no-sandbox', 
-            '--disable-setuid-sandbox', 
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
-            '--single-process'
+            `--proxy-server=${proxy}`
         ];
 
         if (proxy) {
