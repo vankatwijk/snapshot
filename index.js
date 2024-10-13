@@ -92,7 +92,7 @@ app.get('/screenshot', async (req, res) => {
         }
 
         const start = Date.now();
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 }); // 2 minutes
         const loadTime = Date.now() - start;
 
         const title = await page.title();
