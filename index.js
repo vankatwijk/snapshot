@@ -62,11 +62,13 @@ app.get('/screenshot', async (req, res) => {
         url = 'https://' + url;
     }
 
-    const proxyDetails = proxies[country];
+    // Check for the specified country and get proxy details
+    const proxyDetails = country ? proxies[country] : null;
     if (country && !proxyDetails) {
         return res.status(400).send(`Proxy for country "${country}" not available`);
     }
 
+    // Set up cache and generate hash
     const hash = crypto.createHash('md5').update(url + (country || '')).digest('hex');
     const cacheFile = path.join(cacheDir, `${hash}.png`);
 
@@ -82,9 +84,12 @@ app.get('/screenshot', async (req, res) => {
     }
 
     try {
-        const browser = await getBrowserInstance(proxyDetails ? `http://${proxyDetails.ip}:${proxyDetails.port}` : null);
+        // Only use proxy if proxyDetails are available (i.e., country is specified and valid)
+        const proxyServer = proxyDetails ? `http://${proxyDetails.ip}:${proxyDetails.port}` : null;
+        const browser = await getBrowserInstance(proxyServer);
         const page = await browser.newPage();
 
+        // Authenticate if using a proxy with username and password
         if (proxyDetails && proxyDetails.username && proxyDetails.password) {
             await page.authenticate({ username: proxyDetails.username, password: proxyDetails.password });
         }
@@ -96,7 +101,7 @@ app.get('/screenshot', async (req, res) => {
         }
 
         const start = Date.now();
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 }); // 2 minutes
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
         const loadTime = Date.now() - start;
 
         const title = await page.title();
@@ -107,7 +112,6 @@ app.get('/screenshot', async (req, res) => {
         });
 
         const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'png' });
-
         const compressedScreenshotBuffer = await sharp(screenshotBuffer)
             .png({ quality: 50 })
             .toBuffer();
