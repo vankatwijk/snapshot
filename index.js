@@ -5,7 +5,6 @@ const path = require('path');
 const crypto = require('crypto');
 const cors = require('cors');
 const sharp = require('sharp');
-const sslChecker = require('ssl-checker');
 
 const app = express();
 const port = 3000;
@@ -37,10 +36,10 @@ async function getBrowserInstance(proxy = null) {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--disable-gpu',
-            `--proxy-server=${proxy}`
+            '--disable-gpu'
         ];
 
+        // Only add the proxy argument if a proxy is provided
         if (proxy) {
             args.push(`--proxy-server=${proxy}`);
         }
@@ -62,16 +61,17 @@ app.get('/screenshot', async (req, res) => {
         url = 'https://' + url;
     }
 
-    // Check for the specified country and get proxy details
+    // Get proxy details if a valid country is provided
     const proxyDetails = country ? proxies[country] : null;
     if (country && !proxyDetails) {
         return res.status(400).send(`Proxy for country "${country}" not available`);
     }
 
-    // Set up cache and generate hash
+    // Generate a unique hash for caching
     const hash = crypto.createHash('md5').update(url + (country || '')).digest('hex');
     const cacheFile = path.join(cacheDir, `${hash}.png`);
 
+    // Serve from cache if available and refresh is not requested
     if (fs.existsSync(cacheFile) && !refresh) {
         return res.json({
             url,
@@ -84,16 +84,17 @@ app.get('/screenshot', async (req, res) => {
     }
 
     try {
-        // Only use proxy if proxyDetails are available (i.e., country is specified and valid)
+        // Use proxy only if available
         const proxyServer = proxyDetails ? `http://${proxyDetails.ip}:${proxyDetails.port}` : null;
         const browser = await getBrowserInstance(proxyServer);
         const page = await browser.newPage();
 
-        // Authenticate if using a proxy with username and password
+        // Authenticate for proxies with credentials
         if (proxyDetails && proxyDetails.username && proxyDetails.password) {
             await page.authenticate({ username: proxyDetails.username, password: proxyDetails.password });
         }
 
+        // Set viewport based on device type
         if (device === 'mobile') {
             await page.emulate(puppeteer.devices['iPhone 6']);
         } else {
@@ -112,11 +113,9 @@ app.get('/screenshot', async (req, res) => {
         });
 
         const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'png' });
-        const compressedScreenshotBuffer = await sharp(screenshotBuffer)
-            .png({ quality: 50 })
-            .toBuffer();
-
+        const compressedScreenshotBuffer = await sharp(screenshotBuffer).png({ quality: 50 }).toBuffer();
         await fs.promises.writeFile(cacheFile, compressedScreenshotBuffer);
+
         await page.close();
 
         res.json({
@@ -133,31 +132,19 @@ app.get('/screenshot', async (req, res) => {
     }
 });
 
+// Serve cached screenshots
 app.use('/cache', express.static(cacheDir));
 
-process.on('SIGINT', async () => {
-    console.log('SIGINT signal received: closing browser if open');
+// Graceful shutdown
+const shutdown = async () => {
     if (browserInstance) await browserInstance.close();
     process.exit(0);
-});
+};
 
-process.on('SIGTERM', async () => {
-    console.log('SIGTERM signal received: closing browser if open');
-    if (browserInstance) await browserInstance.close();
-    process.exit(0);
-});
-
-process.on('unhandledRejection', async (reason) => {
-    console.error('Unhandled Rejection:', reason);
-    if (browserInstance) await browserInstance.close();
-    process.exit(1);
-});
-
-process.on('uncaughtException', async (error) => {
-    console.error('Uncaught Exception:', error);
-    if (browserInstance) await browserInstance.close();
-    process.exit(1);
-});
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+process.on('unhandledRejection', shutdown);
+process.on('uncaughtException', shutdown);
 
 app.listen(port, () => {
     console.log(`Screenshot service running at http://localhost:${port}`);
