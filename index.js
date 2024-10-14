@@ -63,9 +63,9 @@ app.get('/screenshot', async (req, res) => {
 
     // Get proxy details if a valid country is provided
     const proxyDetails = country ? proxies[country] : null;
-    if (country && !proxyDetails) {
-        return res.status(400).send(`Proxy for country "${country}" not available`);
-    }
+    // if (country && !proxyDetails) {
+    //     return res.status(400).send(`Proxy for country "${country}" not available`);
+    // }
 
     // Generate a unique hash for caching
     const hash = crypto.createHash('md5').update(url + (country || '')).digest('hex');
