@@ -31,7 +31,7 @@ const proxies = {
     'thailand': { ip: '51.159.185.244', port: '9007', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' }
 };
 
-async function getBrowserInstance(proxy) {
+async function getBrowserInstance(proxy = null) {
     if (!browserInstance) {
         const args = [
             '--no-sandbox',
