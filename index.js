@@ -78,9 +78,6 @@ app.get('/search-screenshot', async (req, res) => {
                 // Wait for search result links to load
                 await page.waitForSelector('div#search a', { timeout: 10000 });
         
-                // Step 2: Get all links in the search results
-                const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
-        
             } catch (error) {
                 console.error(`Error on page ${pageCount + 1}:`, error);
                 break; // Exit loop if there is an error
