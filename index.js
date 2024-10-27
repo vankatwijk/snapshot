@@ -90,25 +90,7 @@ app.get('/search-screenshot', async (req, res) => {
         
                     // Take a screenshot of the page where the target URL was found
                     await page.screenshot({ path: targetScreenshotPath, fullPage: true });
-                } else {
-                    // Try to go to the next page if the target URL is not found
-                    const nextPageButton = await page.$('a#pnnext');
-                    if (nextPageButton) {
-                        // Introduce a slight delay before clicking the next button
-                        await page.waitForTimeout(1000);
-                        
-                        // Click the "Next" button and wait for navigation to complete
-                        await Promise.all([
-                            nextPageButton.click(),
-                            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
-                        ]);
-                        pageCount++;
-                    } else {
-                        // Exit loop if there's no next page
-                        console.log("Reached the last page without finding the target URL.");
-                        break;
-                    }
-                }
+                } 
             } catch (error) {
                 console.error(`Error on page ${pageCount + 1}:`, error);
                 break; // Exit loop if there is an error
