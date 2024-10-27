@@ -31,61 +31,33 @@ const proxies = {
 };
 
 async function getBrowserInstance(proxy = null) {
-    if (!browserInstance) {
-        const args = [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu'
-        ];
+    const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'];
 
-        // Only add the proxy argument if a proxy is provided
-        if (proxy) {
-            args.push(`--proxy-server=${proxy}`);
-        }
-
-        browserInstance = await puppeteer.launch({ args, headless: true });
+    if (proxy) {
+        args.push(`--proxy-server=${proxy}`);
     }
-    return browserInstance;
+
+    return await puppeteer.launch({ args, headless: true });
 }
 
-app.get('/screenshot', async (req, res) => {
-    const { url: inputUrl, device = 'desktop', refresh = false, country } = req.query;
+app.get('/search-screenshot', async (req, res) => {
+    const { keyword, targetUrl, country } = req.query;
 
-    if (!inputUrl) {
-        return res.status(400).send('URL is required');
+    if (!keyword || !targetUrl) {
+        return res.status(400).send('Keyword and target URL are required');
     }
 
-    let url = inputUrl;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'https://' + url;
-    }
-
-    // Get proxy details if a valid country is provided
+    // Select the proxy based on country if specified
     const proxyDetails = country ? proxies[country] : null;
-    // if (country && !proxyDetails) {
-    //     return res.status(400).send(`Proxy for country "${country}" not available`);
-    // }
+    const proxyServer = proxyDetails ? `http://${proxyDetails.ip}:${proxyDetails.port}` : null;
 
-    // Generate a unique hash for caching
-    const hash = crypto.createHash('md5').update(url + (country || '')).digest('hex');
-    const cacheFile = path.join(cacheDir, `${hash}.png`);
-
-    // Serve from cache if available and refresh is not requested
-    if (fs.existsSync(cacheFile) && !refresh) {
-        return res.json({
-            url,
-            ssl: url.startsWith('https://'),
-            loadTime: null,
-            seo: { title: null, description: null, h1: null },
-            screenshotPath: `/cache/${hash}.png`,
-            cached: true
-        });
+    const hash = crypto.createHash('md5').update(keyword + targetUrl).digest('hex');
+    const cacheDirKeyword = path.join(cacheDir, hash);
+    if (!fs.existsSync(cacheDirKeyword)) {
+        fs.mkdirSync(cacheDirKeyword);
     }
 
     try {
-        // Use proxy only if available
-        const proxyServer = proxyDetails ? `http://${proxyDetails.ip}:${proxyDetails.port}` : null;
         const browser = await getBrowserInstance(proxyServer);
         const page = await browser.newPage();
 
@@ -94,41 +66,73 @@ app.get('/screenshot', async (req, res) => {
             await page.authenticate({ username: proxyDetails.username, password: proxyDetails.password });
         }
 
-        // Set viewport based on device type
-        if (device === 'mobile') {
-            await page.emulate(puppeteer.devices['iPhone 6']);
-        } else {
-            await page.setViewport({ width: 1280, height: 800 });
+        const results = [];
+        let position = null;
+        const screenshots = [];
+
+        // Navigate to Google with the proxy if specified
+        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, { waitUntil: 'networkidle2' });
+        await page.waitForSelector('div#search');
+
+        // Extract all search result links
+        const links = await page.$$eval('div#search a', elements =>
+            elements.map(el => ({ url: el.href, text: el.innerText }))
+        );
+
+        // Find target URL in the search results
+        for (let i = 0; i < links.length; i++) {
+            if (links[i].url.includes(targetUrl)) {
+                position = i + 1;
+
+                // Take screenshot of search results page
+                const searchScreenshotPath = path.join(cacheDirKeyword, `search_result_position_${position}.png`);
+                await page.screenshot({ path: searchScreenshotPath, fullPage: true });
+                screenshots.push({ step: 'search_result', position, screenshotPath: searchScreenshotPath });
+
+                // Click the link to navigate to the website
+                await page.click(`a[href="${links[i].url}"]`);
+                await page.waitForNavigation({ waitUntil: 'networkidle2' });
+
+                // Take screenshot of landing page
+                const landingScreenshotPath = path.join(cacheDirKeyword, `landing_page.png`);
+                await page.screenshot({ path: landingScreenshotPath, fullPage: true });
+                screenshots.push({ step: 'landing_page', screenshotPath: landingScreenshotPath });
+
+                // Click a random internal link
+                const internalLinks = await page.$$eval('a', elements =>
+                    elements
+                        .map(el => el.href)
+                        .filter(url => url.includes(targetUrl))
+                );
+
+                if (internalLinks.length > 0) {
+                    const randomLink = internalLinks[Math.floor(Math.random() * internalLinks.length)];
+                    await page.goto(randomLink, { waitUntil: 'networkidle2' });
+
+                    // Take screenshot of random internal page
+                    const internalScreenshotPath = path.join(cacheDirKeyword, `internal_page.png`);
+                    await page.screenshot({ path: internalScreenshotPath, fullPage: true });
+                    screenshots.push({ step: 'internal_page', screenshotPath: internalScreenshotPath });
+                }
+                break;
+            }
         }
-
-        const start = Date.now();
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
-        const loadTime = Date.now() - start;
-
-        const title = await page.title();
-        const description = await page.$eval('meta[name="description"]', element => element.content).catch(() => '');
-        const h1 = await page.evaluate(() => {
-            const h1Element = document.querySelector('h1');
-            return h1Element ? h1Element.innerText : 'No h1 element found';
-        });
-
-        const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'png' });
-        const compressedScreenshotBuffer = await sharp(screenshotBuffer).png({ quality: 50 }).toBuffer();
-        await fs.promises.writeFile(cacheFile, compressedScreenshotBuffer);
 
         await page.close();
 
         res.json({
-            url,
-            ssl: url.startsWith('https://'),
-            loadTime,
-            seo: { title, description, h1 },
-            screenshotPath: `/cache/${hash}.png`,
-            cached: false
+            keyword,
+            targetUrl,
+            country,
+            googlePosition: position,
+            screenshots,
+            message: position
+                ? `Found ${targetUrl} at position ${position}`
+                : `Target URL not found in search results`
         });
     } catch (error) {
-        console.error('Error taking screenshot:', error);
-        res.status(500).send(`Error taking screenshot: ${error.message}`);
+        console.error('Error:', error);
+        res.status(500).send(`Error: ${error.message}`);
     }
 });
 
@@ -147,5 +151,5 @@ process.on('unhandledRejection', shutdown);
 process.on('uncaughtException', shutdown);
 
 app.listen(port, () => {
-    console.log(`Screenshot service running at http://localhost:${port}`);
+    console.log(`Search screenshot service running at http://localhost:${port}`);
 });
