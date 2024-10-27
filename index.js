@@ -40,11 +40,6 @@ async function searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPage
         return { found: false, position: -1, pageCount: currentPage };
     }
 
-    // Wait for search result links to load
-    await page.waitForSelector('div#search a', { timeout: 10000 });
-
-    // Get all links in the search results
-    const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
 
     // Return if no more pages are available
     return { found: false, position: -1, pageCount: currentPage + 1 };
