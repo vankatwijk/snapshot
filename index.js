@@ -16,27 +16,24 @@ if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir);
 }
 
-let browserInstance;
+// Proxy setup
+const proxies = {
+    'japan': { ip: '51.159.185.244', port: '9000', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+    'usa': { ip: '51.159.185.244', port: '9002', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+    'spain': { ip: '51.159.185.244', port: '9001', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+};
 
 async function getBrowserInstance(proxy = null) {
     const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'];
-
     if (proxy) {
         args.push(`--proxy-server=${proxy}`);
     }
 
-    try {
-        // Attempt to launch the browser and enable verbose logging with dumpio
-        browserInstance = await puppeteer.launch({ 
-            args, 
-            headless: true, 
-            dumpio: true // This will output browser process errors to the console
-        });
-        return browserInstance;
-    } catch (error) {
-        console.error("Error launching Puppeteer browser:", error);
-        throw new Error("Failed to launch Puppeteer browser. Check the logs for more details.");
-    }
+    return await puppeteer.launch({
+        args,
+        headless: true,
+        dumpio: true
+    });
 }
 
 app.get('/search-screenshot', async (req, res) => {
@@ -55,22 +52,26 @@ app.get('/search-screenshot', async (req, res) => {
         fs.mkdirSync(cacheDirKeyword);
     }
 
+    let browser, page;
     try {
-        const browser = await getBrowserInstance(proxyServer);
-        const page = await browser.newPage();
+        browser = await getBrowserInstance(proxyServer);
+        page = await browser.newPage();
 
-        // Authenticate for proxies with credentials if proxy details are provided
         if (proxyDetails && proxyDetails.username && proxyDetails.password) {
             await page.authenticate({ username: proxyDetails.username, password: proxyDetails.password });
         }
 
-        const results = [];
-        let position = null;
         const screenshots = [];
+        let position = null;
 
+        // Step 1: Google Search
         await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, { waitUntil: 'networkidle2' });
         await page.waitForSelector('div#search');
+        const searchScreenshotPath = path.join(cacheDirKeyword, `google_search.png`);
+        await page.screenshot({ path: searchScreenshotPath, fullPage: true });
+        screenshots.push({ step: 'google_search', screenshotPath: searchScreenshotPath });
 
+        // Step 2: Find the Target URL
         const links = await page.$$eval('div#search a', elements =>
             elements.map(el => ({ url: el.href, text: el.innerText }))
         );
@@ -79,10 +80,12 @@ app.get('/search-screenshot', async (req, res) => {
             if (links[i].url.includes(targetUrl)) {
                 position = i + 1;
 
-                const searchScreenshotPath = path.join(cacheDirKeyword, `search_result_position_${position}.png`);
-                await page.screenshot({ path: searchScreenshotPath, fullPage: true });
-                screenshots.push({ step: 'search_result', position, screenshotPath: searchScreenshotPath });
+                // Screenshot with position of target URL
+                const targetScreenshotPath = path.join(cacheDirKeyword, `search_result_position_${position}.png`);
+                await page.screenshot({ path: targetScreenshotPath, fullPage: true });
+                screenshots.push({ step: 'search_result', position, screenshotPath: targetScreenshotPath });
 
+                // Step 3: Click the Target URL and Screenshot Landing Page
                 await page.click(`a[href="${links[i].url}"]`);
                 await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
@@ -90,6 +93,7 @@ app.get('/search-screenshot', async (req, res) => {
                 await page.screenshot({ path: landingScreenshotPath, fullPage: true });
                 screenshots.push({ step: 'landing_page', screenshotPath: landingScreenshotPath });
 
+                // Step 4: Click a Random Internal Link
                 const internalLinks = await page.$$eval('a', elements =>
                     elements.map(el => el.href).filter(url => url.includes(targetUrl))
                 );
@@ -107,7 +111,6 @@ app.get('/search-screenshot', async (req, res) => {
         }
 
         await page.close();
-
         res.json({
             keyword,
             targetUrl,
@@ -119,6 +122,8 @@ app.get('/search-screenshot', async (req, res) => {
     } catch (error) {
         console.error('Error during screenshot process:', error);
         res.status(500).send(`Error: ${error.message}`);
+    } finally {
+        if (browser) await browser.close();
     }
 });
 
