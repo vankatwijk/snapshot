@@ -35,6 +35,46 @@ async function acceptGoogleConsentPopup(page) {
     }
 }
 
+async function searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPages, currentPage = 0) {
+    if (currentPage >= maxPages) {
+        return { found: false, position: -1, pageCount: currentPage };
+    }
+
+    // Wait for search result links to load
+    await page.waitForSelector('div#search a', { timeout: 10000 });
+
+    // Get all links in the search results
+    const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
+
+    // Check if the target URL is in the current page's search results
+    const position = links.findIndex(link => link.includes(targetUrl));
+
+    if (position !== -1) {
+        // Take a screenshot of the page where the target URL was found
+        await page.screenshot({ path: targetScreenshotPath, fullPage: true });
+        return { found: true, position: position + 1, pageCount: currentPage + 1 };
+    }
+
+    // Try to go to the next page if the target URL is not found
+    const nextPageButton = await page.$('a#pnnext');
+    if (nextPageButton) {
+        // Add a slight delay before clicking the next button to avoid rate-limiting
+        await page.waitForTimeout(1000);
+        
+        // Click the "Next" button and wait for navigation to complete
+        await Promise.all([
+            nextPageButton.click(),
+            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
+        ]);
+
+        // Recur to the next page
+        return await searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPages, currentPage + 1);
+    }
+
+    // Return if no more pages are available
+    return { found: false, position: -1, pageCount: currentPage + 1 };
+}
+
 app.get('/search-screenshot', async (req, res) => {
     const { keyword, targetUrl } = req.query;
 
@@ -56,10 +96,7 @@ app.get('/search-screenshot', async (req, res) => {
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
         );
 
-        let found = false;
-        let position = -1;
-        let pageCount = 0;
-        const maxPages = 2; // Limit the number of pages to 2
+        const maxPages = 2; // Limit to 2 pages
 
         // Step 1: Go to Google and search for the keyword
         await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, {
@@ -73,6 +110,8 @@ app.get('/search-screenshot', async (req, res) => {
         // Take the initial screenshot of the first search result page
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
+        // Perform recursive search for target URL
+        const { found, position, pageCount } = await searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPages);
 
         await page.close();
         await browser.close();
@@ -82,7 +121,7 @@ app.get('/search-screenshot', async (req, res) => {
             keyword,
             targetUrl,
             position: found ? position : 'Not found',
-            pageCount: found ? pageCount + 1 : 'Not found',
+            pageCount: found ? pageCount : 'Not found',
             screenshots: {
                 initial: `/cache/${hash}_initial.png`,
                 target: found ? `/cache/${hash}_target.png` : null
