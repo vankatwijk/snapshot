@@ -46,7 +46,6 @@ app.get('/search-screenshot', async (req, res) => {
     const initialScreenshotPath = path.join(cacheDir, `${hash}_initial.png`);
 
     let browser, page;
-    try {
         browser = await getBrowserInstance();
         page = await browser.newPage();
 
@@ -81,12 +80,6 @@ app.get('/search-screenshot', async (req, res) => {
                 initial: `/cache/${hash}_initial.png`
             }
         });
-    } catch (error) {
-        console.error('Error during search screenshot process:', error);
-        res.status(500).send(`Error: ${error.message}`);
-    } finally {
-        if (browser) await browser.close();
-    }
 });
 
 // Serve cached screenshots
