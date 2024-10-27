@@ -81,8 +81,6 @@ app.get('/search-screenshot', async (req, res) => {
                 // Step 2: Get all links in the search results
                 const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
         
-                // Check if the target URL is in the current page's search results
-                position = links.findIndex(link => link.includes(targetUrl));
             } catch (error) {
                 console.error(`Error on page ${pageCount + 1}:`, error);
                 break; // Exit loop if there is an error
