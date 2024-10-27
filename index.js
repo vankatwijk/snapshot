@@ -67,9 +67,6 @@ app.get('/search-screenshot', async (req, res) => {
         // Take the initial screenshot of the first search result page
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
-        // Extract search result links and check for the target URL
-        const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
-        const position = links.findIndex(link => link.includes(targetUrl));
 
         // Close the page and browser after operation
         await page.close();
