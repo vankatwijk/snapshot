@@ -48,6 +48,9 @@ app.get('/search-screenshot', async (req, res) => {
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
         while (!found) {
+            // Wait for search result links to load
+            await page.waitForSelector('div#search a');
+
             // Step 2: Get all links in the search results
             const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
 
@@ -57,6 +60,9 @@ app.get('/search-screenshot', async (req, res) => {
             if (position !== -1) {
                 found = true;
                 position += 1; // Convert to 1-based index
+
+                // Take a screenshot of the page where the target URL was found
+                await page.screenshot({ path: targetScreenshotPath, fullPage: true });
             } else {
                 // Try to go to the next page if the target URL is not found
                 const nextPageButton = await page.$('a#pnnext');
@@ -68,11 +74,6 @@ app.get('/search-screenshot', async (req, res) => {
                     break; // Exit if there's no next page
                 }
             }
-        }
-
-        // Take a screenshot of the page where the target URL was found (if found)
-        if (found) {
-            await page.screenshot({ path: targetScreenshotPath, fullPage: true });
         }
 
         await page.close();
