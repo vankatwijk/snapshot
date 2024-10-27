@@ -46,15 +46,6 @@ async function searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPage
     // Get all links in the search results
     const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
 
-    // Check if the target URL is in the current page's search results
-    const position = links.findIndex(link => link.includes(targetUrl));
-
-    if (position !== -1) {
-        // Take a screenshot of the page where the target URL was found
-        await page.screenshot({ path: targetScreenshotPath, fullPage: true });
-        return { found: true, position: position + 1, pageCount: currentPage + 1 };
-    }
-
     // Return if no more pages are available
     return { found: false, position: -1, pageCount: currentPage + 1 };
 }
