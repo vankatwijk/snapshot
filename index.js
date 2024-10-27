@@ -73,16 +73,6 @@ app.get('/search-screenshot', async (req, res) => {
         // Take the initial screenshot of the first search result page
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
-        while (!found && pageCount < maxPages) {
-            try {
-                // Wait for search result links to load
-                break;
-        
-            } catch (error) {
-                console.error(`Error on page ${pageCount + 1}:`, error);
-                break; // Exit loop if there is an error
-            }
-        }
 
         await page.close();
         await browser.close();
