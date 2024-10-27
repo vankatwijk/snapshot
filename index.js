@@ -22,6 +22,22 @@ async function getBrowserInstance() {
     });
 }
 
+async function acceptGoogleConsentPopup(page) {
+    try {
+        // Wait briefly for the popup to load if present
+        await page.waitForTimeout(1000);
+
+        // Check for Google's consent button by text and click it if available
+        const consentButton = await page.$x("//button[contains(text(), 'I agree') or contains(text(), 'Accept all')]");
+        if (consentButton.length > 0) {
+            await consentButton[0].click();
+            await page.waitForNavigation({ waitUntil: 'networkidle2' });
+        }
+    } catch (error) {
+        console.warn("Consent popup not found or couldn't be clicked:", error);
+    }
+}
+
 app.get('/search-screenshot', async (req, res) => {
     const { keyword, targetUrl } = req.query;
 
@@ -53,6 +69,9 @@ app.get('/search-screenshot', async (req, res) => {
             waitUntil: 'networkidle2',
             timeout: 30000
         });
+
+        // Accept the consent popup if it appears
+        await acceptGoogleConsentPopup(page);
 
         // Take the initial screenshot of the first search result page
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
