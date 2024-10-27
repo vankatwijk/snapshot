@@ -24,7 +24,10 @@ async function getBrowserInstance() {
 
 async function acceptGoogleConsentPopup(page) {
     try {
+        // Wait briefly for the popup to load if present
         await page.waitForSelector('button#L2AGLb', { timeout: 5000 });
+        
+        // Click the "Accept all" button to dismiss the policy popup
         await page.click('button#L2AGLb');
         await page.waitForNavigation({ waitUntil: 'networkidle2' });
     } catch (error) {
@@ -33,22 +36,21 @@ async function acceptGoogleConsentPopup(page) {
 }
 
 app.get('/search-screenshot', async (req, res) => {
-    const { keyword } = req.query;
+    const { keyword, targetUrl } = req.query;
 
-    if (!keyword) {
-        return res.status(400).send('Keyword is required');
+    if (!keyword || !targetUrl) {
+        return res.status(400).send('Both keyword and target URL are required');
     }
 
-    const hash = crypto.createHash('md5').update(keyword).digest('hex');
+    const hash = crypto.createHash('md5').update(keyword + targetUrl).digest('hex');
     const initialScreenshotPath = path.join(cacheDir, `${hash}_initial.png`);
 
     let browser, page;
     try {
-        // Initialize Puppeteer and open a new page
         browser = await getBrowserInstance();
         page = await browser.newPage();
 
-        // Set a user agent to mimic a real browser
+        // Set user agent to simulate a real browser
         await page.setUserAgent(
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
         );
@@ -56,7 +58,7 @@ app.get('/search-screenshot', async (req, res) => {
         // Step 1: Go to Google and search for the keyword
         await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, {
             waitUntil: 'networkidle2',
-            timeout: 60000  // 1-minute timeout for the initial page load
+            timeout: 30000
         });
 
         // Accept the consent popup if it appears
@@ -65,12 +67,19 @@ app.get('/search-screenshot', async (req, res) => {
         // Take the initial screenshot of the first search result page
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
+        // Extract search result links and check for the target URL
+        const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
+        const position = links.findIndex(link => link.includes(targetUrl));
+
+        // Close the page and browser after operation
         await page.close();
         await browser.close();
 
-        // Return the response with just the initial screenshot
+        // Return JSON response with target URL position
         res.json({
             keyword,
+            targetUrl,
+            position: position !== -1 ? position + 1 : 'Not found', // Convert to 1-based index if found
             screenshots: {
                 initial: `/cache/${hash}_initial.png`
             }
@@ -86,13 +95,6 @@ app.get('/search-screenshot', async (req, res) => {
 // Serve cached screenshots
 app.use('/cache', express.static(cacheDir));
 
-// Start the server with an increased timeout of 5 minutes (300000 ms)
-const server = app.listen(port, () => {
-    console.log(`Search screenshot service running at http://localhost:${port}`);
-});
-
-server.timeout = 300000;  // Increase the server timeout to 5 minutes
-
 // Graceful shutdown
 const shutdown = async () => {
     process.exit(0);
@@ -102,3 +104,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('unhandledRejection', shutdown);
 process.on('uncaughtException', shutdown);
+
+app.listen(port, () => {
+    console.log(`Search screenshot service running at http://localhost:${port}`);
+});
