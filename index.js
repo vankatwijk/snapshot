@@ -76,27 +76,6 @@ app.get('/search-screenshot', async (req, res) => {
         // Take the initial screenshot of the first search result page
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
-        while (!found && pageCount < maxPages) {
-            // Wait for search result links to load
-            await page.waitForSelector('div#search a');
-
-            // Step 2: Get all links in the search results
-            const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
-
-            // Check if the target URL is in the current page's search results
-            position = links.findIndex(link => link.includes(targetUrl));
-
-            if (position !== -1) {
-                found = true;
-                position += 1; // Convert to 1-based index
-
-                // Take a screenshot of the page where the target URL was found
-                await page.screenshot({ path: targetScreenshotPath, fullPage: true });
-            } else {
-                break;
-            }
-        }
-
         await page.close();
         await browser.close();
 
