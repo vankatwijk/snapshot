@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const cors = require('cors');
-const sharp = require('sharp');
 
 const app = express();
 const port = 3000;
@@ -16,35 +15,20 @@ if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir);
 }
 
-// Proxy setup
-const proxies = {
-    'japan': { ip: '51.159.185.244', port: '9000', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-    'usa': { ip: '51.159.185.244', port: '9002', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-    'spain': { ip: '51.159.185.244', port: '9001', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-};
-
-async function getBrowserInstance(proxy = null) {
-    const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'];
-    if (proxy) {
-        args.push(`--proxy-server=${proxy}`);
-    }
-
+async function getBrowserInstance() {
     return await puppeteer.launch({
-        args,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
         headless: true,
         dumpio: true
     });
 }
 
 app.get('/search-screenshot', async (req, res) => {
-    const { keyword, targetUrl, country } = req.query;
+    const { keyword, targetUrl } = req.query;
 
     if (!keyword || !targetUrl) {
         return res.status(400).send('Keyword and target URL are required');
     }
-
-    const proxyDetails = country ? proxies[country] : null;
-    const proxyServer = proxyDetails ? `http://${proxyDetails.ip}:${proxyDetails.port}` : null;
 
     const hash = crypto.createHash('md5').update(keyword + targetUrl).digest('hex');
     const cacheDirKeyword = path.join(cacheDir, hash);
@@ -54,12 +38,8 @@ app.get('/search-screenshot', async (req, res) => {
 
     let browser, page;
     try {
-        browser = await getBrowserInstance(proxyServer);
+        browser = await getBrowserInstance();
         page = await browser.newPage();
-
-        if (proxyDetails && proxyDetails.username && proxyDetails.password) {
-            await page.authenticate({ username: proxyDetails.username, password: proxyDetails.password });
-        }
 
         const screenshots = [];
         let position = null;
@@ -114,7 +94,6 @@ app.get('/search-screenshot', async (req, res) => {
         res.json({
             keyword,
             targetUrl,
-            country,
             googlePosition: position,
             screenshots,
             message: position ? `Found ${targetUrl} at position ${position}` : `Target URL not found in search results`
