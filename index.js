@@ -74,31 +74,44 @@ app.get('/search-screenshot', async (req, res) => {
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
         while (!found && pageCount < maxPages) {
-            // Wait for search result links to load
-            await page.waitForSelector('div#search a');
-
-            // Step 2: Get all links in the search results
-            const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
-
-            // Check if the target URL is in the current page's search results
-            position = links.findIndex(link => link.includes(targetUrl));
-
-            if (position !== -1) {
-                found = true;
-                position += 1; // Convert to 1-based index
-
-                // Take a screenshot of the page where the target URL was found
-                await page.screenshot({ path: targetScreenshotPath, fullPage: true });
-            } else {
-                // Try to go to the next page if the target URL is not found
-                const nextPageButton = await page.$('a#pnnext');
-                if (nextPageButton) {
-                    await nextPageButton.click();
-                    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
-                    pageCount++;
+            try {
+                // Wait for search result links to load
+                await page.waitForSelector('div#search a', { timeout: 10000 });
+        
+                // Step 2: Get all links in the search results
+                const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
+        
+                // Check if the target URL is in the current page's search results
+                position = links.findIndex(link => link.includes(targetUrl));
+        
+                if (position !== -1) {
+                    found = true;
+                    position += 1; // Convert to 1-based index
+        
+                    // Take a screenshot of the page where the target URL was found
+                    await page.screenshot({ path: targetScreenshotPath, fullPage: true });
                 } else {
-                    break; // Exit if there's no next page
+                    // Try to go to the next page if the target URL is not found
+                    const nextPageButton = await page.$('a#pnnext');
+                    if (nextPageButton) {
+                        // Introduce a slight delay before clicking the next button
+                        await page.waitForTimeout(1000);
+                        
+                        // Click the "Next" button and wait for navigation to complete
+                        await Promise.all([
+                            nextPageButton.click(),
+                            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
+                        ]);
+                        pageCount++;
+                    } else {
+                        // Exit loop if there's no next page
+                        console.log("Reached the last page without finding the target URL.");
+                        break;
+                    }
                 }
+            } catch (error) {
+                console.error(`Error on page ${pageCount + 1}:`, error);
+                break; // Exit loop if there is an error
             }
         }
 
