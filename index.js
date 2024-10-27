@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const cors = require('cors');
+const sharp = require('sharp');
 
 const app = express();
 const port = 3000;
@@ -15,47 +16,113 @@ if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir);
 }
 
-async function getBrowserInstance() {
-    return await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        headless: true
-    });
-}
+let browserInstance;
 
-app.get('/search-screenshot', async (req, res) => {
-    const { keyword } = req.query;
+// Define proxies for different countries
+const proxies = {
+    'japan': { ip: '51.159.185.244', port: '9000', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+    'usa': { ip: '51.159.185.244', port: '9002', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+    'spain': { ip: '51.159.185.244', port: '9001', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+    'france': { ip: '51.159.185.244', port: '9003', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+    'australia': { ip: '51.159.185.244', port: '9004', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+    'canada': { ip: '51.159.185.244', port: '9005', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+    'vietnam': { ip: '51.159.185.244', port: '9006', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+    'thailand': { ip: '51.159.185.244', port: '9007', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' }
+};
 
-    if (!keyword) {
-        return res.status(400).send('Keyword is required');
-    }
+async function getBrowserInstance(proxy = null) {
+    if (!browserInstance) {
+        const args = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu'
+        ];
 
-    const hash = crypto.createHash('md5').update(keyword).digest('hex');
-    const cacheFile = path.join(cacheDir, `${hash}.png`);
-
-    try {
-        // Use cache if screenshot already exists
-        if (fs.existsSync(cacheFile)) {
-            return res.json({
-                keyword,
-                screenshotPath: `/cache/${hash}.png`,
-                cached: true
-            });
+        // Only add the proxy argument if a proxy is provided
+        if (proxy) {
+            args.push(`--proxy-server=${proxy}`);
         }
 
-        // Launch browser and search Google
-        const browser = await getBrowserInstance();
+        browserInstance = await puppeteer.launch({ args, headless: true });
+    }
+    return browserInstance;
+}
+
+app.get('/screenshot', async (req, res) => {
+    const { url: inputUrl, device = 'desktop', refresh = false, country } = req.query;
+
+    if (!inputUrl) {
+        return res.status(400).send('URL is required');
+    }
+
+    let url = inputUrl;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+    }
+
+    // Get proxy details if a valid country is provided
+    const proxyDetails = country ? proxies[country] : null;
+    // if (country && !proxyDetails) {
+    //     return res.status(400).send(`Proxy for country "${country}" not available`);
+    // }
+
+    // Generate a unique hash for caching
+    const hash = crypto.createHash('md5').update(url + (country || '')).digest('hex');
+    const cacheFile = path.join(cacheDir, `${hash}.png`);
+
+    // Serve from cache if available and refresh is not requested
+    if (fs.existsSync(cacheFile) && !refresh) {
+        return res.json({
+            url,
+            ssl: url.startsWith('https://'),
+            loadTime: null,
+            seo: { title: null, description: null, h1: null },
+            screenshotPath: `/cache/${hash}.png`,
+            cached: true
+        });
+    }
+
+    try {
+        // Use proxy only if available
+        const proxyServer = proxyDetails ? `http://${proxyDetails.ip}:${proxyDetails.port}` : null;
+        const browser = await getBrowserInstance(proxyServer);
         const page = await browser.newPage();
 
-        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, { waitUntil: 'networkidle2' });
-        
-        // Take a screenshot of the Google search results
-        await page.screenshot({ path: cacheFile, fullPage: true });
+        // Authenticate for proxies with credentials
+        if (proxyDetails && proxyDetails.username && proxyDetails.password) {
+            await page.authenticate({ username: proxyDetails.username, password: proxyDetails.password });
+        }
+
+        // Set viewport based on device type
+        if (device === 'mobile') {
+            await page.emulate(puppeteer.devices['iPhone 6']);
+        } else {
+            await page.setViewport({ width: 1280, height: 800 });
+        }
+
+        const start = Date.now();
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
+        const loadTime = Date.now() - start;
+
+        const title = await page.title();
+        const description = await page.$eval('meta[name="description"]', element => element.content).catch(() => '');
+        const h1 = await page.evaluate(() => {
+            const h1Element = document.querySelector('h1');
+            return h1Element ? h1Element.innerText : 'No h1 element found';
+        });
+
+        const screenshotBuffer = await page.screenshot({ fullPage: false, type: 'png' });
+        const compressedScreenshotBuffer = await sharp(screenshotBuffer).png({ quality: 50 }).toBuffer();
+        await fs.promises.writeFile(cacheFile, compressedScreenshotBuffer);
 
         await page.close();
-        await browser.close();
 
         res.json({
-            keyword,
+            url,
+            ssl: url.startsWith('https://'),
+            loadTime,
+            seo: { title, description, h1 },
             screenshotPath: `/cache/${hash}.png`,
             cached: false
         });
@@ -70,6 +137,7 @@ app.use('/cache', express.static(cacheDir));
 
 // Graceful shutdown
 const shutdown = async () => {
+    if (browserInstance) await browserInstance.close();
     process.exit(0);
 };
 
@@ -79,5 +147,5 @@ process.on('unhandledRejection', shutdown);
 process.on('uncaughtException', shutdown);
 
 app.listen(port, () => {
-    console.log(`Search screenshot service running at http://localhost:${port}`);
+    console.log(`Screenshot service running at http://localhost:${port}`);
 });
