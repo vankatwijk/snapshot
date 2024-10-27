@@ -32,90 +32,47 @@ async function acceptGoogleConsentPopup(page) {
     }
 }
 
-async function searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPages) {
-    for (let currentPage = 0; currentPage < maxPages; currentPage++) {
-        try {
-            // Wait for search result links to load
-            await page.waitForSelector('div#search a', { timeout: 10000 });
-
-            // Get all links in the search results
-            const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
-
-            // Check if the target URL is in the current page's search results
-            const position = links.findIndex(link => link.includes(targetUrl));
-
-            if (position !== -1) {
-                await page.screenshot({ path: targetScreenshotPath, fullPage: true });
-                return { found: true, position: position + 1, pageCount: currentPage + 1 };
-            }
-
-            // Go to the next page if the target URL is not found
-            const nextPageButton = await page.$('a#pnnext');
-            if (nextPageButton) {
-                await nextPageButton.click();
-                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
-                await page.waitForTimeout(1000); // Short delay to prevent rapid requests
-            } else {
-                break;
-            }
-        } catch (error) {
-            console.error(`Error on page ${currentPage + 1}:`, error);
-            break;
-        }
-    }
-
-    // Return if no match found within maxPages
-    return { found: false, position: -1, pageCount: maxPages };
-}
-
 app.get('/search-screenshot', async (req, res) => {
-    const { keyword, targetUrl } = req.query;
+    const { keyword } = req.query;
 
-    if (!keyword || !targetUrl) {
-        return res.status(400).send('Both keyword and target URL are required');
+    if (!keyword) {
+        return res.status(400).send('Keyword is required');
     }
 
-    const hash = crypto.createHash('md5').update(keyword + targetUrl).digest('hex');
+    const hash = crypto.createHash('md5').update(keyword).digest('hex');
     const initialScreenshotPath = path.join(cacheDir, `${hash}_initial.png`);
-    const targetScreenshotPath = path.join(cacheDir, `${hash}_target.png`);
 
     let browser, page;
     try {
+        // Initialize Puppeteer and open a new page
         browser = await getBrowserInstance();
         page = await browser.newPage();
 
+        // Set a user agent to mimic a real browser
         await page.setUserAgent(
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
         );
 
-        const maxPages = 2;
-
         // Step 1: Go to Google and search for the keyword
         await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, {
             waitUntil: 'networkidle2',
-            timeout: 30000
+            timeout: 60000  // 1-minute timeout for the initial page load
         });
 
+        // Accept the consent popup if it appears
         await acceptGoogleConsentPopup(page);
 
         // Take the initial screenshot of the first search result page
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
-        // Perform iterative search for target URL
-        const { found, position, pageCount } = await searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPages);
-
         await page.close();
         await browser.close();
 
-        // Return the response with position and screenshots
+        // Return the response with just the initial screenshot
         res.json({
             keyword,
-            targetUrl,
-            position: found ? position : 'Not found',
-            pageCount: found ? pageCount : 'Not found',
             screenshots: {
-                initial: `/cache/${hash}_initial.png`,
-                target: found ? `/cache/${hash}_target.png` : null
+                initial: `/cache/${hash}_initial.png`
             }
         });
     } catch (error) {
@@ -129,6 +86,13 @@ app.get('/search-screenshot', async (req, res) => {
 // Serve cached screenshots
 app.use('/cache', express.static(cacheDir));
 
+// Start the server with an increased timeout of 5 minutes (300000 ms)
+const server = app.listen(port, () => {
+    console.log(`Search screenshot service running at http://localhost:${port}`);
+});
+
+server.timeout = 300000;  // Increase the server timeout to 5 minutes
+
 // Graceful shutdown
 const shutdown = async () => {
     process.exit(0);
@@ -138,7 +102,3 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('unhandledRejection', shutdown);
 process.on('uncaughtException', shutdown);
-
-app.listen(port, () => {
-    console.log(`Search screenshot service running at http://localhost:${port}`);
-});
