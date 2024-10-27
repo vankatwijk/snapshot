@@ -83,14 +83,6 @@ app.get('/search-screenshot', async (req, res) => {
         
                 // Check if the target URL is in the current page's search results
                 position = links.findIndex(link => link.includes(targetUrl));
-        
-                if (position !== -1) {
-                    found = true;
-                    position += 1; // Convert to 1-based index
-        
-                    // Take a screenshot of the page where the target URL was found
-                    await page.screenshot({ path: targetScreenshotPath, fullPage: true });
-                } 
             } catch (error) {
                 console.error(`Error on page ${pageCount + 1}:`, error);
                 break; // Exit loop if there is an error
