@@ -24,10 +24,7 @@ async function getBrowserInstance() {
 
 async function acceptGoogleConsentPopup(page) {
     try {
-        // Wait briefly for the popup to load if present
         await page.waitForSelector('button#L2AGLb', { timeout: 5000 });
-        
-        // Click the "Accept all" button to dismiss the policy popup
         await page.click('button#L2AGLb');
         await page.waitForNavigation({ waitUntil: 'networkidle2' });
     } catch (error) {
@@ -35,14 +32,40 @@ async function acceptGoogleConsentPopup(page) {
     }
 }
 
-async function searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPages, currentPage = 0) {
-    if (currentPage >= maxPages) {
-        return { found: false, position: -1, pageCount: currentPage };
+async function searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPages) {
+    for (let currentPage = 0; currentPage < maxPages; currentPage++) {
+        try {
+            // Wait for search result links to load
+            await page.waitForSelector('div#search a', { timeout: 10000 });
+
+            // Get all links in the search results
+            const links = await page.$$eval('div#search a', elements => elements.map(el => el.href));
+
+            // Check if the target URL is in the current page's search results
+            const position = links.findIndex(link => link.includes(targetUrl));
+
+            if (position !== -1) {
+                await page.screenshot({ path: targetScreenshotPath, fullPage: true });
+                return { found: true, position: position + 1, pageCount: currentPage + 1 };
+            }
+
+            // Go to the next page if the target URL is not found
+            const nextPageButton = await page.$('a#pnnext');
+            if (nextPageButton) {
+                await nextPageButton.click();
+                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+                await page.waitForTimeout(1000); // Short delay to prevent rapid requests
+            } else {
+                break;
+            }
+        } catch (error) {
+            console.error(`Error on page ${currentPage + 1}:`, error);
+            break;
+        }
     }
 
-
-    // Return if no more pages are available
-    return { found: false, position: -1, pageCount: currentPage + 1 };
+    // Return if no match found within maxPages
+    return { found: false, position: -1, pageCount: maxPages };
 }
 
 app.get('/search-screenshot', async (req, res) => {
@@ -61,12 +84,11 @@ app.get('/search-screenshot', async (req, res) => {
         browser = await getBrowserInstance();
         page = await browser.newPage();
 
-        // Set user agent to simulate a real browser
         await page.setUserAgent(
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
         );
 
-        const maxPages = 2; // Limit to 2 pages
+        const maxPages = 2;
 
         // Step 1: Go to Google and search for the keyword
         await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, {
@@ -74,13 +96,12 @@ app.get('/search-screenshot', async (req, res) => {
             timeout: 30000
         });
 
-        // Accept the consent popup if it appears
         await acceptGoogleConsentPopup(page);
 
         // Take the initial screenshot of the first search result page
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
-        // Perform recursive search for target URL
+        // Perform iterative search for target URL
         const { found, position, pageCount } = await searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPages);
 
         await page.close();
