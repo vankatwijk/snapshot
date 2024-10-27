@@ -37,17 +37,27 @@ app.get('/search-screenshot', async (req, res) => {
     try {
         browser = await getBrowserInstance();
         page = await browser.newPage();
+
+        // Set user agent to simulate a real browser
+        await page.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
+        );
+
         let found = false;
         let position = -1;
         let pageCount = 0;
+        const maxPages = 5; // Limit the number of pages to check to avoid indefinite loops
 
         // Step 1: Go to Google and search for the keyword
-        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, { waitUntil: 'networkidle2' });
-        
+        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(keyword)}`, {
+            waitUntil: 'networkidle2',
+            timeout: 30000
+        });
+
         // Take the initial screenshot of the first search result page
         await page.screenshot({ path: initialScreenshotPath, fullPage: true });
 
-        while (!found) {
+        while (!found && pageCount < maxPages) {
             // Wait for search result links to load
             await page.waitForSelector('div#search a');
 
@@ -68,8 +78,9 @@ app.get('/search-screenshot', async (req, res) => {
                 const nextPageButton = await page.$('a#pnnext');
                 if (nextPageButton) {
                     await nextPageButton.click();
-                    await page.waitForNavigation({ waitUntil: 'networkidle2' });
+                    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
                     pageCount++;
+                    await page.waitForTimeout(2000); // Wait for 2 seconds to avoid rate-limiting
                 } else {
                     break; // Exit if there's no next page
                 }
