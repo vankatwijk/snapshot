@@ -55,22 +55,6 @@ async function searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPage
         return { found: true, position: position + 1, pageCount: currentPage + 1 };
     }
 
-    // Try to go to the next page if the target URL is not found
-    const nextPageButton = await page.$('a#pnnext');
-    if (nextPageButton) {
-        // Add a slight delay before clicking the next button to avoid rate-limiting
-        await page.waitForTimeout(1000);
-        
-        // Click the "Next" button and wait for navigation to complete
-        await Promise.all([
-            nextPageButton.click(),
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
-        ]);
-
-        // Recur to the next page
-        return await searchForTargetUrl(page, targetUrl, targetScreenshotPath, maxPages, currentPage + 1);
-    }
-
     // Return if no more pages are available
     return { found: false, position: -1, pageCount: currentPage + 1 };
 }
