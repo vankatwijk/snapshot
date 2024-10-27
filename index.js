@@ -77,6 +77,7 @@ app.get('/search-screenshot', async (req, res) => {
             try {
                 // Wait for search result links to load
                 await page.waitForSelector('div#search a', { timeout: 10000 });
+                pageCount++;
         
             } catch (error) {
                 console.error(`Error on page ${pageCount + 1}:`, error);
