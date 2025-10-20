@@ -19,15 +19,10 @@ if (!fs.existsSync(cacheDir)) {
 let browserInstance;
 
 // Define proxies for different countries
+//    'japan': { ip: '51.159.185.244', port: '9000', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
+//    'usa': { ip: '51.159.185.244', port: '9002', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' }
 const proxies = {
-    'japan': { ip: '51.159.185.244', port: '9000', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-    'usa': { ip: '51.159.185.244', port: '9002', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-    'spain': { ip: '51.159.185.244', port: '9001', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-    'france': { ip: '51.159.185.244', port: '9003', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-    'australia': { ip: '51.159.185.244', port: '9004', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-    'canada': { ip: '51.159.185.244', port: '9005', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-    'vietnam': { ip: '51.159.185.244', port: '9006', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' },
-    'thailand': { ip: '51.159.185.244', port: '9007', username: 'geonode_Gg6rpqlu1v', password: '3d7fd268-77cd-415d-93f0-af389437c99c' }
+
 };
 
 async function getBrowserInstance(proxy = null) {
